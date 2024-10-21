@@ -1,0 +1,17 @@
+<!-- templates/base.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>{% block title %}My Personal Portfolio{% endblock title %}</title>
+    {% load static %}
+    <link rel="shortcut icon" type="image/png" href="{% static 'favicon.png' %}"/>
+    <link rel="stylesheet" href="{% static 'bootstrap.min.css' %}"" />   
+    <link rel="stylesheet" href="{% static 'spectrum.css' %}"" />
+</head>
+<body class="container">
+
+{% block page_content %}{% endblock page_content %}
+</body>
+</html>
