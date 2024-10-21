@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block page_content %}
+    <h1>Hello, World!</h1>
+    <form class="form-horizontal" method="post" action="">{% csrf_token %}
+        {{ formset.management_form }}
+        <table class="table table-striped">
+            <thead>
+                <th>Note</th>
+                <th></th>
+                {% for field in formset.forms.0.visible_fields %}
+                    {% if not field.is_hidden %}
+                        <th>{{ field.label }}</th>
+                    {% endif %}
+                {% endfor %}
+            </thead>
+            <tbody>
+                {% for form in formset %}
+                    <tr class="formset_row dynamic">
+                        <td class="note">{{ form.note }}
+                            <input class="colorpicker" />
+                            <span class="text"></span>
+                        </td>
+                        <td>
+                            <a class="bulb-query">Query</a>
+                        </td>
+                        {% for field in form.visible_fields %}
+                            <td>
+                                {% if forloop.first %}
+                                    {% for hidden in form.hidden_fields %}
+                                        {{ hidden }}
+                                    {% endfor %}
+                                {% endif %}
+                                {{ field.errors.as_ul }}
+                                {{ field }}
+                            </td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <!-- {{formset}} -->
+        <button type="submit" formaction=".">Save Changes</button>
+    </form>
+    {% load static %}
+    <script src="{% static 'jquery-2.2.4.min.js' %}"></script>
+    <script src="{% static 'jquery.formset.js' %}"></script>
+    <script src="{% static 'spectrum.js' %}"></script>
+    <script type="text/javascript">
+        $('.formset_row').formset({
+            addText: 'Add New',
+            deleteText: 'Delete',
+            prefix: "{{ formset.prefix }}",
+        });
+
+        function rgbToHex(r, g, b) {
+            return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1);
+        }
+
+        /* accepts parameters
+         * h  Object = {h:x, s:y, v:z}
+         * OR 
+         * h, s, v
+        */
+        function HSVtoRGB(h, s, v) {
+            h = h/360;
+            s = s/100;
+            v = v/100;
+            var r, g, b, i, f, p, q, t;
+            if (arguments.length === 1) {
+                s = h.s, v = h.v, h = h.h;
+            }
+            i = Math.floor(h * 6);
+            f = h * 6 - i;
+            p = v * (1 - s);
+            q = v * (1 - f * s);
+            t = v * (1 - (1 - f) * s);
+            switch (i % 6) {
+                case 0: r = v, g = t, b = p; break;
+                case 1: r = q, g = v, b = p; break;
+                case 2: r = p, g = v, b = t; break;
+                case 3: r = p, g = q, b = v; break;
+                case 4: r = t, g = p, b = v; break;
+                case 5: r = v, g = p, b = q; break;
+            }
+            r = Math.round(r * 255);
+            g = Math.round(g * 255);
+            b = Math.round(b * 255);
+            return rgbToHex(r,g,b)
+        }
+
+        /* accepts parameters
+         * r  Object = {r:x, g:y, b:z}
+         * OR 
+         * r, g, b
+        */
+        function RGBtoHSV(r, g, b) {
+            if (arguments.length === 1) {
+                g = r.g, b = r.b, r = r.r;
+            }
+            var max = Math.max(r, g, b), min = Math.min(r, g, b),
+                d = max - min,
+                h,
+                s = (max === 0 ? 0 : d / max),
+                v = max / 255;
+
+            switch (max) {
+                case min: h = 0; break;
+                case r: h = (g - b) + d * (g < b ? 6: 0); h /= 6 * d; break;
+                case g: h = (b - r) + d * 2; h /= 6 * d; break;
+                case b: h = (r - g) + d * 4; h /= 6 * d; break;
+            }
+
+            return {
+                h: h,
+                s: s,
+                v: v
+            };
+        }
+
+        $(".colorpicker").spectrum({
+            color: "#CCCCCC",
+            showInput: true,
+            move: function(t) { 
+                hsv = t.toHsv()
+                h = Math.round(hsv['h'])
+                s = Math.round(hsv['s']*100)
+                v = Math.round(hsv['v']*100)
+
+                var id = $(this).parent().siblings().children('[id*="-id"]').val()
+                var note = $(this).parent().siblings('.note').children('.text')
+                $.ajax({
+                    url: '/set/'+id+'/h'+h+'s'+s+'v'+v,
+                    type: 'GET',
+                    dataType: "json",
+                    success: (data) => {},
+                    error: (error) => {
+                        note.text("error");
+                    }
+                })
+            },
+        });
+
+        $('.bulb-query').on("click", function() {
+            var id = $(this).parent().siblings().children('[id*="-id"]').val()
+            var note = $(this).parent().siblings('.note').children('.text')
+            var cp = $(this).parent().siblings('.note').children('.colorpicker')
+            $.ajax({
+                url: '/query/'+id,
+                type: 'GET',
+                dataType: "json",
+                success: (data) => {
+                    var color = HSVtoRGB(data['hue'],data['sat'],data['val']);
+                    cp.spectrum("set", color);
+                },
+                error: (error) => {
+                    cp.spectrum("set", "#CCCCCC");
+                    note.text("error");
+                }
+            })
+        })
+    </script>
+{% endblock page_content %}
