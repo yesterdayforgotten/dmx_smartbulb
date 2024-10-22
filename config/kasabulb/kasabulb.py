@@ -80,8 +80,8 @@ class Kasa:
                     'saturation': sat,
                     'brightness': val,
                     'on_off': 0 if val == 0 else 1,
-                    #'color_temp': 0,
-                    #'ignore_default': 1,
+                    'color_temp': 0,
+                    'ignore_default': 1,
                     'transition_period': transition_period
                 }
             }

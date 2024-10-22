@@ -1,0 +1,94 @@
+diff --git a/config/forms.py b/config/forms.py
+index 81ea480..2a55d6e 100644
+--- a/config/forms.py
++++ b/config/forms.py
+@@ -13,4 +13,4 @@ class BulbForm(forms.ModelForm):
+     def save(self, commit=True):
+         return super(BulbForm, self).save(commit=commit)
+ 
+-BulbFormSet = modelformset_factory(Bulb, form=BulbForm, exclude=(), extra=0, can_delete=True)
+\ No newline at end of file
++BulbFormSet = modelformset_factory(Bulb, form=BulbForm, exclude=(), extra=1, can_delete=True)
+\ No newline at end of file
+diff --git a/config/jobs.py b/config/jobs.py
+index 89062b8..6dc3eb0 100644
+--- a/config/jobs.py
++++ b/config/jobs.py
+@@ -38,6 +38,8 @@ Scheduler.run_continuously = run_continuously
+ from stupidArtnet import StupidArtnetServer
+ 
+ def rx_something(data):
++    if rx_something.last_update != None and time.time()-rx_something.last_update < .05:
++        return
+     #start_time = time.time()
+     for bulb in Bulb.objects.all():
+         if bulb.enabled == False:
+@@ -49,6 +51,8 @@ def rx_something(data):
+         Kasa.change_color(bulb.ip_addr, hue, sat, val)
+     #stop_time = time.time()
+     #print("--- %s seconds ---" % (stop_time - start_time))
++    rx_something.last_update = time.time()
++rx_something.last_update = None
+ 
+ def do_something():
+     a = StupidArtnetServer()
+diff --git a/config/kasabulb/kasabulb.py b/config/kasabulb/kasabulb.py
+index d84dd98..a1b2754 100644
+--- a/config/kasabulb/kasabulb.py
++++ b/config/kasabulb/kasabulb.py
+@@ -80,8 +80,8 @@ class Kasa:
+                     'saturation': sat,
+                     'brightness': val,
+                     'on_off': 0 if val == 0 else 1,
+-                    #'color_temp': 0,
+-                    #'ignore_default': 1,
++                    'color_temp': 0,
++                    'ignore_default': 1,
+                     'transition_period': transition_period
+                 }
+             }
+diff --git a/config/models.py b/config/models.py
+index 166f653..16dbbd9 100644
+--- a/config/models.py
++++ b/config/models.py
+@@ -5,4 +5,4 @@ class Bulb(models.Model):
+     name    = models.CharField(max_length=100)
+     ip_addr = models.GenericIPAddressField(protocol="IPv4", default="0.0.0.0")
+     channel = models.IntegerField(default=0,validators=[MaxValueValidator(511), MinValueValidator(1)])
+-    enabled = models.BooleanField(default=0)
+\ No newline at end of file
++    enabled = models.BooleanField(default=False)
+\ No newline at end of file
+diff --git a/config/templates/pages/home.html b/config/templates/pages/home.html
+index 2385c39..2a76c64 100644
+--- a/config/templates/pages/home.html
++++ b/config/templates/pages/home.html
+@@ -4,7 +4,7 @@
+     <h1>Hello, World!</h1>
+     <form class="form-horizontal" method="post" action="">{% csrf_token %}
+         {{ formset.management_form }}
+-        <table class="table table-striped">
++        <table id="bulb-table" class="table table-striped">
+             <thead>
+                 <th>Note</th>
+                 <th></th>
+@@ -47,12 +47,19 @@
+     <script src="{% static 'jquery.formset.js' %}"></script>
+     <script src="{% static 'spectrum.js' %}"></script>
+     <script type="text/javascript">
++        // Initialize dynamic form adding/deletion
+         $('.formset_row').formset({
+             addText: 'Add New',
+             deleteText: 'Delete',
+             prefix: "{{ formset.prefix }}",
+         });
+ 
++        // Hide extra row if there are already some rows present
++        rows = $('#bulb-table > tbody').children('.formset_row')
++        if (rows.length > 1) {
++            $(rows[rows.length-1]).css('display','none')
++        }
++
+         function rgbToHex(r, g, b) {
+             return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1);
+         }

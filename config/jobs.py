@@ -38,6 +38,8 @@ Scheduler.run_continuously = run_continuously
 from stupidArtnet import StupidArtnetServer
 
 def rx_something(data):
+    if rx_something.last_update != None and time.time()-rx_something.last_update < .05:
+        return
     #start_time = time.time()
     for bulb in Bulb.objects.all():
         if bulb.enabled == False:
@@ -49,6 +51,8 @@ def rx_something(data):
         Kasa.change_color(bulb.ip_addr, hue, sat, val)
     #stop_time = time.time()
     #print("--- %s seconds ---" % (stop_time - start_time))
+    rx_something.last_update = time.time()
+rx_something.last_update = None
 
 def do_something():
     a = StupidArtnetServer()
