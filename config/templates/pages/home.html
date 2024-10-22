@@ -4,7 +4,7 @@
     <h1>Hello, World!</h1>
     <form class="form-horizontal" method="post" action="">{% csrf_token %}
         {{ formset.management_form }}
-        <table class="table table-striped">
+        <table id="bulb-table" class="table table-striped">
             <thead>
                 <th>Note</th>
                 <th></th>
@@ -47,11 +47,18 @@
     <script src="{% static 'jquery.formset.js' %}"></script>
     <script src="{% static 'spectrum.js' %}"></script>
     <script type="text/javascript">
+        // Initialize dynamic form adding/deletion
         $('.formset_row').formset({
             addText: 'Add New',
             deleteText: 'Delete',
             prefix: "{{ formset.prefix }}",
         });
+
+        // Hide extra row if there are already some rows present
+        rows = $('#bulb-table > tbody').children('.formset_row')
+        if (rows.length > 1) {
+            $(rows[rows.length-1]).css('display','none')
+        }
 
         function rgbToHex(r, g, b) {
             return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1);

@@ -13,4 +13,4 @@ class BulbForm(forms.ModelForm):
     def save(self, commit=True):
         return super(BulbForm, self).save(commit=commit)
 
-BulbFormSet = modelformset_factory(Bulb, form=BulbForm, exclude=(), extra=0, can_delete=True)
+BulbFormSet = modelformset_factory(Bulb, form=BulbForm, exclude=(), extra=1, can_delete=True)
