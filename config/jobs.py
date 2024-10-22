@@ -35,7 +35,23 @@ def run_continuously(self, interval=1):
 
 Scheduler.run_continuously = run_continuously
 
-from stupidArtnet import StupidArtnetServer
+# from stupidArtnet import StupidArtnetServer
+# def rx_something(data):
+#     if rx_something.last_update != None and time.time()-rx_something.last_update < .05:
+#         return
+#     #start_time = time.time()
+#     for bulb in Bulb.objects.all():
+#         if bulb.enabled == False:
+#             continue
+#         #print(bulb.name)
+#         channel = bulb.channel
+#         hue, sat, val = Kasa.scale_hsv(data[channel-1]-1, data[channel], data[channel+1])
+#         #print(bulb.ip_addr, channel, hue, sat, val)
+#         Kasa.change_color(bulb.ip_addr, hue, sat, val)
+#     #stop_time = time.time()
+#     #print("--- %s seconds ---" % (stop_time - start_time))
+#     rx_something.last_update = time.time()
+# rx_something.last_update = None
 
 def rx_something(data):
     if rx_something.last_update != None and time.time()-rx_something.last_update < .05:
@@ -55,8 +71,11 @@ def rx_something(data):
 rx_something.last_update = None
 
 def do_something():
-    a = StupidArtnetServer()
-    a.register_listener(universe=0, callback_function=rx_something)
+    # a = StupidArtnetServer()
+    # a.register_listener(universe=0, callback_function=rx_something)
+    c = DmxClient('/dev/ttyAMA0', [1], MyDmxCallback())
+    c.run()
+    print("after-run")
     while True:
         time.sleep(100)
 

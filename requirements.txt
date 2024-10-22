@@ -2,3 +2,5 @@ django
 schedule
 schedule
 stupidartnet
+pyserial>=3.5
+gunicorn
