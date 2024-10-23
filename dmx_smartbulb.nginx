@@ -1,0 +1,18 @@
+server_tokens               off;
+access_log                  /var/log/nginx/dmx_smartbulb.access.log;
+error_log                   /var/log/nginx/dmx_smartbulb.error.log;
+
+# This configuration will be changed to redirect to HTTPS later
+server {
+  server_name               .dmx_smartbulb;
+  listen                    80 default_server;
+  location / {
+    proxy_pass              http://localhost:8000;
+    proxy_set_header        Host $host;
+  }
+
+  location /static {
+    autoindex on;
+    alias /home/phola/dmx_smartbulb/static/;
+  }	  
+}
