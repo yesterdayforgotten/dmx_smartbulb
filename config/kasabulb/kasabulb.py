@@ -52,19 +52,30 @@ class Kasa:
     def send_kasa_packet(ip_addr, port, data):
         data = Kasa.encrypt(json.dumps(data))
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.sendto(data, (ip_addr, port))
+        try:
+            sock.sendto(data, (ip_addr, port))
+        except Exception as e:
+            print("Error: Network Error")
+            print(e)
         sock.close()
 
     @staticmethod
     def send_kasa_packet_and_response(ip_addr, port, data):
         data = Kasa.encrypt(json.dumps(data))
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.sendto(data, (ip_addr, port))
+        try:
+            sock.sendto(data, (ip_addr, port))
+        except Exception as e:
+            data = "network error"
+            print("Error: Network Error")
+            print(e)
+            sock.close()
+            return data
         sock.settimeout(.5)
         try:
             data, addr = sock.recvfrom(4096)
             data = json.loads(Kasa.decrypt(data))
-        except:
+        except Exception:
             data = "timeout"
         sock.close()
         return data
@@ -76,7 +87,7 @@ class Kasa:
         data = {
             'smartlife.iot.smartbulb.lightingservice': {
                 'transition_light_state': {
-                    'hue': hue,
+                    'hue': 180 if (sat == 0) else hue,
                     'saturation': sat,
                     'brightness': val,
                     'on_off': 0 if val == 0 else 1,
@@ -87,6 +98,48 @@ class Kasa:
             }
         }
         Kasa.send_kasa_packet(ip_addr, 9999, data)
+
+    def set_temperature(ip_addr, temp, val):
+        transition_period = 30
+        #transition_period = 0
+        data = {
+            'smartlife.iot.smartbulb.lightingservice': {
+                'transition_light_state': {
+                    'brightness': val,
+                    'on_off': 0 if val == 0 else 1,
+                    'color_temp': round(temp),
+                    'ignore_default': 1,
+                    'transition_period': transition_period
+                }
+            }
+        }
+        Kasa.send_kasa_packet(ip_addr, 9999, data)
+
+    def set_preferred_state(ip_addr, temp, hue, sat, val):
+        data = {
+            'smartlife.iot.smartbulb.lightingservice': {
+                'set_default_behavior': {
+                    "soft_on":{
+                        "index":"null",
+                        "mode":"last_status"
+                    },
+                    "hard_on": {
+                        "index":0,
+                        "mode":"customize_preset"
+                    },
+                },
+                'set_preferred_state': {
+                    'index': 0,
+                    'hue': 180 if (sat == 0) else hue,
+                    'saturation': sat,
+                    'brightness': val,
+                    'on_off': 0 if val == 0 else 1,
+                    'color_temp': round(temp),
+                }
+            }
+        }
+        Kasa.send_kasa_packet(ip_addr, 9999, data)
+
 
     @staticmethod
     def get_state(ip_addr):

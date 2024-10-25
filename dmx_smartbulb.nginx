@@ -13,6 +13,6 @@ server {
 
   location /static {
     autoindex on;
-    alias /home/phola/dmx_smartbulb/static/;
+    alias /dmx_smartbulb/static/;
   }	  
 }

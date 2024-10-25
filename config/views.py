@@ -16,8 +16,15 @@ def bulb_query(request, bulb_id):
     if is_ajax:
         bulb = get_object_or_404(Bulb, id=bulb_id)
         data = Kasa.get_state(bulb.ip_addr)
+        print(data)
 
-        return JsonResponse({'status': 'success', 'hue': data['system']['get_sysinfo']['light_state']['hue'], 'sat': data['system']['get_sysinfo']['light_state']['saturation'], 'val': data['system']['get_sysinfo']['light_state']['brightness']})
+        state = data['system']['get_sysinfo']['light_state']
+        print(state)
+
+        if (state["color_temp"] == 0):
+            return JsonResponse({'h': state['hue'], 's': state['saturation'], 'v': state['brightness']})
+        else:
+            return JsonResponse({'t': state['color_temp'], 'v': state['brightness']})
     else:
         return HttpResponseBadRequest('Invalid request')
     
@@ -27,6 +34,30 @@ def bulb_set(request, bulb_id, h, s, v):
     if is_ajax:
         bulb = get_object_or_404(Bulb, id=bulb_id)
         Kasa.change_color(bulb.ip_addr, h, s, v)
+
+        return JsonResponse({'status': 'success'})
+    else:
+        return HttpResponseBadRequest('Invalid request')
+    
+def bulb_set_temp(request, bulb_id, t, v):
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+    if is_ajax:
+        bulb = get_object_or_404(Bulb, id=bulb_id)
+        Kasa.set_temperature(bulb.ip_addr, t, v)
+
+        return JsonResponse({'status': 'success'})
+    else:
+        return HttpResponseBadRequest('Invalid request')
+
+def bulb_set_default_state(request, bulb_id, t, v):
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+    if is_ajax:
+        bulb = get_object_or_404(Bulb, id=bulb_id)
+        h = 0
+        s = 0
+        Kasa.set_preferred_state(bulb.ip_addr, t, h, s, v)
 
         return JsonResponse({'status': 'success'})
     else:
