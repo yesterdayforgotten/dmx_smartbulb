@@ -9,4 +9,5 @@ class ConfigConfig(AppConfig):
        from . import jobs
 
        if os.environ.get('RUN_MAIN', None) != 'true':
+           print("RUN_MAIN")
            jobs.start_scheduler()

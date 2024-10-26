@@ -64,10 +64,10 @@ class MyDmxCallback(DmxClientCallback):
         self.last_update = time.time()
 
     def sync_lost(self) -> None:
-        print("SYNC LOST")
+        print("DmxClient: SYNC LOST", flush=True)
 
     def sync_found(self) -> None:
-        print("SYNC FOUND")
+        print("DnxClient: SYNC FOUND", flush=True)
 
     def data_received(self, monitored_data: dict[int, int]) -> None:
         #print("VALID MONITORED DATA: %s" % monitored_data)
@@ -76,6 +76,7 @@ class MyDmxCallback(DmxClientCallback):
     def full_data_received(self, data: bytes) -> None:
         if time.time()-self.last_update < .01:
             return
+
         #start_time = time.time()
         for bulb in Bulb.objects.all():
             if bulb.enabled == False:
@@ -83,7 +84,7 @@ class MyDmxCallback(DmxClientCallback):
             #print(bulb.name)
             channel = bulb.channel
             hue, sat, val = Kasa.scale_hsv(data[channel-1]-1, data[channel], data[channel+1])
-            #print(bulb.ip_addr, channel, hue, sat, val)
+            #print(bulb.ip_addr, channel, hue, sat, val, flush=True)
             Kasa.change_color(bulb.ip_addr, hue, sat, val)
         #stop_time = time.time()
         #print("--- %s seconds ---" % (stop_time - start_time))
@@ -92,8 +93,14 @@ class MyDmxCallback(DmxClientCallback):
 def do_something():
     # a = StupidArtnetServer()
     # a.register_listener(universe=0, callback_function=rx_something)
-    c = DmxClient('/dev/ttyAMA0', [1], MyDmxCallback())
-    c.run()
+    print("DmxClient: Starting");
+    while True:
+        try:
+            c = DmxClient('/dev/ttyAMA3', [1], MyDmxCallback())
+            c.run()
+        except Exception as e:
+            print("DMX Exception:", e)
+            time.sleep(2)
     # print("after-run")
     # while True:
     #     time.sleep(100)
@@ -102,6 +109,7 @@ def do_something():
 
 
 def start_scheduler():
+    print("Start Scheduler")
     scheduler = Scheduler()
     scheduler.every().second.do(do_something)
     scheduler.run_continuously()
