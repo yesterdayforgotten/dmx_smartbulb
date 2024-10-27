@@ -6,3 +6,6 @@ class Bulb(models.Model):
     ip_addr = models.GenericIPAddressField(protocol="IPv4", default="0.0.0.0")
     channel = models.IntegerField(default=0,validators=[MaxValueValidator(511), MinValueValidator(1)])
     enabled = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['ip_addr']
