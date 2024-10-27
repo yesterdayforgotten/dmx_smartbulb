@@ -1,67 +1,17 @@
 from django.db.models import F
-from schedule import Scheduler
-import threading
+from multiprocessing import Process, Lock, Array
 import time
+import signal
 from .kasabulb.kasabulb import Kasa
-
 from .models import Bulb
-
-def run_continuously(self, interval=1):
-    """Continuously run, while executing pending jobs at each elapsed
-    time interval.
-    @return cease_continuous_run: threading.Event which can be set to
-    cease continuous run.
-    Please note that it is *intended behavior that run_continuously()
-    does not run missed jobs*. For example, if you've registered a job
-    that should run every minute and you set a continuous run interval
-    of one hour then your job won't be run 60 times at each interval but
-    only once.
-    """
-
-    cease_continuous_run = threading.Event()
-
-    class ScheduleThread(threading.Thread):
-
-        @classmethod
-        def run(cls):
-            while not cease_continuous_run.is_set():
-                self.run_pending()
-                time.sleep(interval)
-
-    continuous_thread = ScheduleThread()
-    continuous_thread.setDaemon(True)
-    continuous_thread.start()
-    return cease_continuous_run
-
-Scheduler.run_continuously = run_continuously
-
-# from stupidArtnet import StupidArtnetServer
-# def rx_something(data):
-#     if rx_something.last_update != None and time.time()-rx_something.last_update < .05:
-#         return
-#     #start_time = time.time()
-#     for bulb in Bulb.objects.all():
-#         if bulb.enabled == False:
-#             continue
-#         #print(bulb.name)
-#         channel = bulb.channel
-#         hue, sat, val = Kasa.scale_hsv(data[channel-1]-1, data[channel], data[channel+1])
-#         #print(bulb.ip_addr, channel, hue, sat, val)
-#         Kasa.change_color(bulb.ip_addr, hue, sat, val)
-#     #stop_time = time.time()
-#     #print("--- %s seconds ---" % (stop_time - start_time))
-#     rx_something.last_update = time.time()
-# rx_something.last_update = None
-
 from lib.dmx_python_client.dmx_client import DmxClient
 from lib.dmx_python_client.dmx_client import DmxClientCallback
+from django import db
 
 class MyDmxCallback(DmxClientCallback):
-    """
-    Example implementation of all available callback methods
-    """
-    def __init__(self):
-        self.last_update = time.time()
+    def __init__(self, data_array, data_lock):
+        self.data_array = data_array
+        self.data_lock = data_lock
 
     def sync_lost(self) -> None:
         print("DmxClient: SYNC LOST", flush=True)
@@ -70,46 +20,81 @@ class MyDmxCallback(DmxClientCallback):
         print("DnxClient: SYNC FOUND", flush=True)
 
     def data_received(self, monitored_data: dict[int, int]) -> None:
-        #print("VALID MONITORED DATA: %s" % monitored_data)
         pass
 
     def full_data_received(self, data: bytes) -> None:
-        if time.time()-self.last_update < .01:
-            return
+        self.data_lock.acquire()
+        for i in range(len(self.data_array)):
+            self.data_array[i] = data[i]
+        self.data_lock.release()
 
-        #start_time = time.time()
-        for bulb in Bulb.objects.all():
-            if bulb.enabled == False:
-                continue
-            #print(bulb.name)
-            channel = bulb.channel
-            hue, sat, val = Kasa.scale_hsv(data[channel-1]-1, data[channel], data[channel+1])
-            #print(bulb.ip_addr, channel, hue, sat, val, flush=True)
-            Kasa.change_color(bulb.ip_addr, hue, sat, val)
-        #stop_time = time.time()
-        #print("--- %s seconds ---" % (stop_time - start_time))
-        self.last_update = time.time()
+class GracefulExit(Exception):
+    pass
 
-def do_something():
-    # a = StupidArtnetServer()
-    # a.register_listener(universe=0, callback_function=rx_something)
-    print("DmxClient: Starting");
-    while True:
-        try:
-            c = DmxClient('/dev/ttyAMA3', [1], MyDmxCallback())
-            c.run()
-        except Exception as e:
-            print("DMX Exception:", e)
-            time.sleep(2)
-    # print("after-run")
+def signal_handler(signum, frame):
+    raise GracefulExit
+
+def dmx_receiver(data_array, data_lock):
+    try: 
+        print("dmx_receiver: Starting", flush=True)
+        # a = StupidArtnetServer()
+        # a.register_listener(universe=0, callback_function=rx_something)
+        while True:
+            try:
+                print("DmxClient: Starting", flush=True);
+                c = DmxClient('/dev/ttyAMA3', [1], MyDmxCallback(data_array, data_lock))
+                c.run()
+            except GracefulExit:
+                raise
+            except Exception as e:
+                print("DMX Exception:", e)
+                time.sleep(2)
+    except GracefulExit:
+        print("dmx_receiver exiting gracefully")
+
+def bulb_updater(data_array, data_lock):
+    try: 
+        print("bulb_updater: Starting", flush=True)
+        dmx_data = bytearray()
+        last_update = time.time()
+        while True:
+            #if time.time()-self.last_update < .01:
+            #    return
+            data_lock.acquire()
+            dmx_data = bytearray(data_array)
+            data_lock.release()
+            #start_time = time.time()
+            for bulb in Bulb.objects.all():
+                if bulb.enabled == False:
+                    continue
+                # print(bulb.name, flush=True)
+                channel = bulb.channel
+                hue, sat, val = Kasa.scale_hsv(dmx_data[channel-1]-1, dmx_data[channel], dmx_data[channel+1])
+                #print(bulb.ip_addr, channel, hue, sat, val, flush=True)
+                Kasa.change_color(bulb.ip_addr, hue, sat, val)
+            #stop_time = time.time()
+            #print("--- %s seconds ---" % (stop_time - start_time))
+            #last_update = time.time()
+            time.sleep(.1)
+    except GracefulExit:
+        print("bulb_updater exiting gracefully")
+
+def start_background_processes():
+    data_array = Array('B', [0]*512)
+    data_lock  = Lock()
+
+    db.connections.close_all()
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    dmx_process  = Process(target=dmx_receiver, args=(data_array, data_lock,))
+    bulb_process = Process(target=bulb_updater, args=(data_array, data_lock,))
+
     # while True:
-    #     time.sleep(100)
+    #     data_lock.acquire()
+    #     data_lock.release()
 
+    dmx_process.daemon = True
+    bulb_process.daemon = True
 
-
-
-def start_scheduler():
-    print("Start Scheduler")
-    scheduler = Scheduler()
-    scheduler.every().second.do(do_something)
-    scheduler.run_continuously()
+    dmx_process.start()
+    bulb_process.start()
