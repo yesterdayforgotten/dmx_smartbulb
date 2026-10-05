@@ -3,3 +3,9 @@ env/*
 *__pycache__*
 *~
 *.swp
+
+# PlatformIO build output
+.pio/
+
+# Editor settings
+.vscode/
