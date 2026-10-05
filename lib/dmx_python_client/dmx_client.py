@@ -6,6 +6,8 @@ from serial import PARITY_NONE, STOPBITS_TWO
 
 import time
 
+import binascii
+
 from .dmx_client_callback import DmxClientCallback, DummyDmxClientCallback
 
 
@@ -61,7 +63,7 @@ class DmxClient:
         # indicate
         self.has_istrip = istrip
 
-    def read_serial_data(self, length=516):
+    def read_serial_data(self, length=1500):
         bdata: bytes = b''
         odd: bytes = b''
         # read data up until break
@@ -80,6 +82,7 @@ class DmxClient:
         return bdata, bdata[-3:] == b'\xFF\x00\x00'
 
     def obtain_sync(self) -> bool:
+        print ("obtain_sync start")
         # remove ISTRIP to distinguish from FFOOOO sequences in data from BREAK sequence
         self.set_iflag(istrip=True)
         # reset buffers
@@ -96,6 +99,7 @@ class DmxClient:
         # balance out buffer/position difference
         bdata, is_correct_dmx_frame = self.read_serial_data(518 - len(parts[1]))
         bdata, is_correct_dmx_frame = self.read_serial_data()
+        print(binascii.hexlify(bdata), flush=True)
         self.set_iflag(istrip=False)
         return True
 
@@ -105,6 +109,8 @@ class DmxClient:
             # dmx[0] + 512 + break sequence = 516 bytes
             frame, sync_correct = self.read_serial_data()
             if not sync_correct:
+                print("sync not correct")
+                print(binascii.hexlify(frame), flush=True)
                 # notify callback
                 self.has_lost_sync = True
                 if self.has_sync:
