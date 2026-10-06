@@ -9,3 +9,5 @@ env/*
 
 # Editor settings
 .vscode/
+.venv-test/
+__pycache__/
