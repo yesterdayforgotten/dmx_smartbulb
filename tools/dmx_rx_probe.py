@@ -26,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from engine.dmx_uart import DmxParser, open_dmx_port  # noqa: E402
+from engine.dmx_uart import DmxParser, ParserStats, open_dmx_port  # noqa: E402
 from tools import dmx_testpattern as tp  # noqa: E402
 
 PROC_TTY = "/proc/tty/driver/ttyAMA"
@@ -97,6 +97,31 @@ class Esp32Link:
     def command(self, cmd):
         self.ser.write(cmd.encode() + b"\n")
 
+    def wait_for_pattern(self, pattern, timeout=10):
+        # If opening the port reset the board, it reboots in ~0.5 s; status lines
+        # buffered before that are stale, so wait it out and start clean.
+        time.sleep(1.5)
+        self.ser.reset_input_buffer()
+        self.buf, self.status, self.messages = b"", None, []
+        want_mode = "cycle" if pattern == "cycle" else "pin"
+        cmd = "c" if pattern == "cycle" else f"p{pattern}"
+        deadline = time.monotonic() + timeout
+        last_cmd = 0
+        while time.monotonic() < deadline:
+            self.poll()
+            st = self.status
+            if st and st[2] == want_mode and (pattern == "cycle" or st[0] == int(pattern)):
+                time.sleep(0.5)   # let the new pattern settle on the wire
+                self.poll()
+                self.messages.clear()
+                return
+            if time.monotonic() - last_cmd > 1:
+                self.command(cmd)  # resend until the firmware confirms it
+                last_cmd = time.monotonic()
+            time.sleep(0.05)
+        raise SystemExit(f"ESP32 on {self.ser.port} didn't confirm pattern {pattern!r}; "
+                         f"last output: {self.messages[-3:]}")
+
     def poll(self):
         self.buf += self.ser.read(4096)
         *lines, self.buf = self.buf.split(b"\n")
@@ -116,15 +141,34 @@ def fmt_sc(counter):
 
 def run_live(args):
     line_no = int(re.search(r"(\d+)$", args.port)[1])
+    esp = None
+    if args.crosscheck:
+        # Opening the USB port can reset the ESP32 (DTR pulses on open), and GPIO14
+        # glitches while it boots, so set the pattern and wait for it to be
+        # running before the DMX port is opened and anything is counted.
+        esp = Esp32Link(args.crosscheck)
+        esp.wait_for_pattern(args.pattern)
     fd = open_dmx_port(args.port)
     if args.rt:
         os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(args.rt))
     parser = DmxParser()
     rec = open(args.record, "wb") if args.record else None
     verify = Verifier() if (args.crosscheck or args.verify) else None
-    esp = Esp32Link(args.crosscheck) if args.crosscheck else None
+
+    # Warm-up: opening the port mid-stream can catch half a byte (one framing
+    # error) before the first BREAK, so run for a second, then start counting.
+    warm_end = time.monotonic() + 1.0
+    while time.monotonic() < warm_end:
+        if select.select([fd], [], [], 0.05)[0]:
+            for f in parser.feed(os.read(fd, 65536)):
+                if verify:
+                    verify.add(f)
     if esp:
-        esp.command("c" if args.pattern == "cycle" else f"p{args.pattern}")
+        esp.poll()
+        esp.messages.clear()
+    parser.stats = ParserStats()
+    if verify:
+        verify = Verifier()
 
     k0 = kernel_counters(line_no)
     if k0 is None:

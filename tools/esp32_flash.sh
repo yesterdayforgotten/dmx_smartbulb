@@ -31,6 +31,26 @@ board_info() {
     [ -n "$MAC" ] || { echo "couldn't read the board's MAC" >&2; exit 1; }
 }
 
+# Run esptool <cmd> (write_flash or verify_flash) over the image FILE, skipping
+# the sectors listed in FILE.bad: the image is cut into one piece per good range.
+flash_ranges() {
+    local file=$1 cmd=$2 pieces dir start=0 size end args=() extra=()
+    size=$(stat -c %s "$file")
+    dir=$(mktemp -d)
+    pieces=$( { [ -f "$file.bad" ] && cat "$file.bad"; echo "$size"; } | while read -r b; do
+        b=$((b)); [ "$b" -gt "$start" ] && echo "$start $((b - start))"; start=$((b + 0x1000)); done )
+    while read -r off len; do
+        dd if="$file" of="$dir/$off.bin" bs=4096 skip=$((off / 4096)) count=$((len / 4096)) status=none
+        args+=("$off" "$dir/$off.bin")
+    done <<<"$pieces"
+    [ "$cmd" = write_flash ] && extra=(--flash_mode keep --flash_freq keep --flash_size keep)
+    timeout 600 "$PIO_PY" "$ESPTOOL" --chip esp32 --port "$PORT" --baud 460800 "$cmd" "${extra[@]}" "${args[@]}" \
+        | grep -vE "\([0-9]+ %\)" | tail -4
+    local rc=${PIPESTATUS[0]}
+    rm -rf "$dir"
+    return "$rc"
+}
+
 newest_backup() { ls -1t "$BACKUPS"/esp32-"$MAC"-*.bin 2>/dev/null | head -1; }
 
 case ${1:-} in
@@ -38,18 +58,47 @@ backup)
     board_info
     mkdir -p "$BACKUPS"
     f=$BACKUPS/esp32-$MAC-$(date +%Y%m%d-%H%M%S).bin
-    echo "board $MAC, flash $SIZE: reading twice to verify"
-    esptool read_flash 0 "$BYTES" "$f"
-    esptool read_flash 0 "$BYTES" "$f.check"
-    if cmp -s "$f" "$f.check"; then
-        rm "$f.check"
-        (cd "$BACKUPS" && sha256sum "$(basename "$f")" > "$(basename "$f").sha256")
-        echo "backup OK: $f"
-        cat "$f.sha256"
-    else
-        echo "the two reads differ; backup NOT trusted ($f, $f.check)" >&2
-        exit 1
+    echo "board $MAC, flash $SIZE: reading (esptool checks the chip's MD5 of the read)"
+    # esptool's read has no timeout and hangs on an unreadable flash sector, so
+    # read in chunks with a timeout. A chunk that fails is re-read sector by
+    # sector; sectors that still fail are filled with 0xFF and listed in $f.bad
+    # (restore skips them).
+    CHUNK=$((0x40000)) SECTOR=$((0x1000))
+    tmp=$(mktemp -d)
+    : > "$tmp/bad"
+    readpart() {  # offset size file baud
+        timeout "$5" "$PIO_PY" "$ESPTOOL" --chip esp32 --port "$PORT" --baud "$4" \
+            read_flash "$1" "$2" "$3" >/dev/null 2>&1
+    }
+    for ((off = 0; off < BYTES; off += CHUNK)); do
+        part=$(printf '%s/%08x.bin' "$tmp" "$off")
+        if readpart "$off" "$CHUNK" "$part" "$BAUD" 20 || readpart "$off" "$CHUNK" "$part" 460800 30; then
+            printf '  read 0x%06x-0x%06x\n' "$off" $((off + CHUNK))
+            continue
+        fi
+        printf '  chunk 0x%06x failed; reading it sector by sector\n' "$off"
+        : > "$part"
+        for ((s = off; s < off + CHUNK; s += SECTOR)); do
+            if readpart "$s" "$SECTOR" "$tmp/sector" 460800 8 || readpart "$s" "$SECTOR" "$tmp/sector" 115200 15; then
+                cat "$tmp/sector" >> "$part"
+            else
+                printf '0x%06x\n' "$s" | tee -a "$tmp/bad" | sed 's/^/  UNREADABLE sector /'
+                head -c "$SECTOR" /dev/zero | tr '\0' '\377' >> "$part"
+            fi
+        done
+    done
+    cat "$tmp"/*.bin > "$f"
+    [ "$(stat -c %s "$f")" -eq $((BYTES)) ] || { echo "image has the wrong size" >&2; exit 1; }
+    if [ -s "$tmp/bad" ]; then
+        cp "$tmp/bad" "$f.bad"
+        echo "$(wc -l < "$f.bad") unreadable sector(s), listed in $f.bad (filled with 0xFF in the image)"
     fi
+    rm -rf "$tmp"
+    echo "verifying the image against the chip"
+    flash_ranges "$f" verify_flash
+    (cd "$BACKUPS" && sha256sum "$(basename "$f")" > "$(basename "$f").sha256")
+    echo "backup OK: $f"
+    cat "$f.sha256"
     ;;
 txtest)
     board_info
@@ -68,8 +117,9 @@ restore)
         (cd "$(dirname "$f")" && sha256sum -c --quiet "$(basename "$f").sha256")
     fi
     echo "restoring $f"
-    esptool write_flash --flash_mode keep --flash_freq keep --flash_size keep 0 "$f"
-    esptool verify_flash 0 "$f"
+    [ -f "$f.bad" ] && echo "skipping unreadable sectors: $(tr '\n' ' ' < "$f.bad")"
+    flash_ranges "$f" write_flash
+    flash_ranges "$f" verify_flash
     ;;
 *)
     sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
