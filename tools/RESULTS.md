@@ -58,6 +58,19 @@ The first attempt saw nothing on pin 29: the clip leads were on the wrong XLR pi
 and 5-pin faces differ (pins 1 and 2 are side by side on top of a 3-pin, on the right side of
 a 5-pin); only pin 3 sits in the same place.
 
+## Cable unplug / replug, 2026-10-07 17:35-17:40
+Enttec sending full512, probe `--verify --record`; clip leads unplugged, yanked, jiggled and
+partly disconnected by hand at 17:37:22-17:37:34. Probe verdict FAIL is expected (it counts the
+deliberate damage); what matters is below.
+
+- 9,345 frames verified, 0 corrupt frames accepted. 17 frames with framing errors were dropped
+  whole (149 error bytes); 143 frames lost during two ~2.3 s disconnects and short glitches.
+- After every reconnect the very next frame verified (replay of the recording, frame by frame).
+- Flaky contact produced 2 junk packets, both with non-zero start codes (0xFE, 0x95), so ignored.
+  No junk packet with start code 0x00 got through. Noise could in principle make one; the engine
+  should guard against it (phase 2 note: hold off on a sudden change in packet length until it
+  repeats).
+
 ## Enttec soak, 2026-10-07 11:04 to 15:04 (+ block 2 rerun 16:44 to 17:14)
 `tools/enttec_soak.sh 4`: Enttec -> clip leads -> shield -> divider -> pin 29, 8 x 30 min blocks.
 Load = CPU hogs, SD writes, flood ping and bulb-shaped UDP (`tools/net_load.py`, 600 pkt/s
@@ -105,4 +118,5 @@ Every one of the 35,851 per-second lines was clean. The ttyAMA3 lifetime oe coun
 - Open: ESP32 on pin 10 (GPIO15, ttyAMA0) corrupts bits (0 read as 1) only while GPIO15's pull-up
   is on; clean with no pull. Wire 0 ohm, static levels 0.02 / 3.32 V. Same wire on pin 29 is clean
   with the pull-up. Needs a scope, or a UART5 (pin 33) comparison.
-- Step 1.6 done in short runs (above). Remaining: the ColorSource capture at the venue (phase 5).
+- Step 1.6, the Enttec 4 h soak and the cable test are done (above). Remaining: the ColorSource
+  capture at the venue (phase 5).
