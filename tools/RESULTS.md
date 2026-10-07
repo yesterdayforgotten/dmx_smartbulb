@@ -58,6 +58,30 @@ The first attempt saw nothing on pin 29: the clip leads were on the wrong XLR pi
 and 5-pin faces differ (pins 1 and 2 are side by side on top of a 3-pin, on the right side of
 a 5-pin); only pin 3 sits in the same place.
 
+## Enttec soak, 2026-10-07 11:04 to 15:04 (+ block 2 rerun 16:44 to 17:14)
+`tools/enttec_soak.sh 4`: Enttec -> clip leads -> shield -> divider -> pin 29, 8 x 30 min blocks.
+Load = CPU hogs, SD writes, flood ping and bulb-shaped UDP (`tools/net_load.py`, 600 pkt/s
+with 3000 pkt/s bursts, to the gateway's discard port). "console" = FT232R baud steps nearest
++-2% (244.9k-255.3k), BREAK 88 us-3 ms, MAB to 1 ms, 0-30 ms idle, some packets split with
+1-3 ms gaps. "rdm" = every 40 packets a DUB request + BREAK-less DUB response, or a GET pair.
+Logs: `~/phase1_logs/enttec-soak-20261007-1104/` and `.../enttec-soak-block2-rerun/`.
+
+| Block | Frames verified | Lost | Corrupt | Malformed | k_oe | k_fe | Result |
+|---|---|---|---|---|---|---|---|
+| full512 idle fixed | 57,534 | 0 | 0 | 0 | 0 | 0 | PASS |
+| full512 load fixed (rerun) | 51,957 | 0 | 0 | 0 | 0 | 0 | PASS |
+| full512 load console | 33,278 | 0 | 0 | 0 | 0 | 0 | PASS |
+| full512 idle console | 34,141 | 0 | 0 | 0 | 0 | 0 | PASS |
+| escapes idle console+rdm | 33,700 | 0 | 0 | 0 | 0 | 0 | PASS |
+| escapes load console+rdm | 33,121 | 0 | 0 | 0 | 0 | 0 | PASS |
+| varlen load console+rdm | 42,425 | 0 | 0 | 0 | 0 | 0 | PASS |
+| startcodes idle rdm | 55,404 | 0 | 0 | 0 | 0 | 0 | PASS |
+
+Total 341,560 DMX frames verified, 6,238 RDM packets absorbed (no DMX frame disturbed), 0 truncated.
+In the first run, block 2's sender died after 2.5 min (a 1 s FTDI write timeout under load) and
+the block passed on silence; the harness now recovers from stalls and fails blocks that go quiet
+for over 5 s, and the rerun had no stalls. The stall's cause is unknown (sender side, not receiver).
+
 ## Quick suite, 2026-10-06 19:20 (18 s per run)
 `sudo tools/phase1_suite.sh 18`, ESP32 on pin 29. All 22 runs PASS: patterns 0-5 idle, under load,
 under load with IRQ 36 on CPU3, plus full512 and timing at 245k and 255k baud under load.
