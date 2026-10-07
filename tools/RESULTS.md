@@ -48,4 +48,27 @@ QLC+ at maximum frequency, 512 channels, fades through 17, 19, 255.
 | idle | | | | | | | |
 | load | | | | | | | |
 
+## Quick suite, 2026-10-06 19:20 (18 s per run)
+`sudo tools/phase1_suite.sh 18`, ESP32 on pin 29. All 22 runs PASS: patterns 0-5 idle, under load,
+under load with IRQ 36 on CPU3, plus full512 and timing at 245k and 255k baud under load.
+64,277 frames verified, 0 lost, 0 corrupt, 0 kernel oe/fe. cyclictest (20 s) under load max 241 us.
+
+## Overnight soak, 2026-10-06 22:11 to 2026-10-07 08:11
+`tools/overnight.sh 10`, ESP32 GPIO14 -> pin 29 (ttyAMA3), GPIO5 pull-up on, IRQ unpinned.
+20 x 30 min blocks cycling full512 idle / full512 load / timing load / timing idle.
+Logs: `~/phase1_logs/overnight-20261006-2211/`.
+
+| Blocks | Frames verified | Lost | Corrupt | Malformed | k_oe | k_fe | Result |
+|---|---|---|---|---|---|---|---|
+| 20 / 20 | 1,895,113 | 0 | 0 | 0 | 0 | 0 | PASS |
+
+Every one of the 35,851 per-second lines was clean. The ttyAMA3 lifetime oe counter stayed at 28
+(all from the old 921600-baud ESP32 link before testing began).
+
 ## Notes
+- The 28 oe on the old link: at 921600 baud the PL011 has ~174 us after its half-full RX interrupt
+  before overrunning; at 250k 8N2 it has ~704 us. Idle cyclictest max was 205 us.
+- Open: ESP32 on pin 10 (GPIO15, ttyAMA0) corrupts bits (0 read as 1) only while GPIO15's pull-up
+  is on; clean with no pull. Wire 0 ohm, static levels 0.02 / 3.32 V. Same wire on pin 29 is clean
+  with the pull-up. Needs a scope, or a UART5 (pin 33) comparison.
+- Still to do: step 1.6, the Enttec -> shield -> divider -> pin 29 path.
