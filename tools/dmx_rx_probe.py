@@ -97,7 +97,7 @@ class Esp32Link:
     def command(self, cmd):
         self.ser.write(cmd.encode() + b"\n")
 
-    def wait_for_pattern(self, pattern, timeout=10):
+    def wait_for_pattern(self, pattern, baud=0, timeout=10):
         # If opening the port reset the board, it reboots in ~0.5 s; status lines
         # buffered before that are stale, so wait it out and start clean.
         time.sleep(1.5)
@@ -110,12 +110,14 @@ class Esp32Link:
         while time.monotonic() < deadline:
             self.poll()
             st = self.status
-            if st and st[2] == want_mode and (pattern == "cycle" or st[0] == int(pattern)):
+            if (st and st[2] == want_mode and st[3] == baud
+                    and (pattern == "cycle" or st[0] == int(pattern))):
                 time.sleep(0.5)   # let the new pattern settle on the wire
                 self.poll()
                 self.messages.clear()
                 return
             if time.monotonic() - last_cmd > 1:
+                self.command(f"b{baud}")
                 self.command(cmd)  # resend until the firmware confirms it
                 last_cmd = time.monotonic()
             time.sleep(0.05)
@@ -127,9 +129,9 @@ class Esp32Link:
         *lines, self.buf = self.buf.split(b"\n")
         for raw in lines:
             line = raw.decode(errors="replace").strip()
-            m = re.match(r"S (\d+) (\d+) (\w+)", line)
+            m = re.match(r"S (\d+) (\d+) (\w+)(?: baud=(\d+))?", line)
             if m:
-                self.status = (int(m[1]), int(m[2]), m[3])
+                self.status = (int(m[1]), int(m[2]), m[3], int(m[4] or 0))
                 self.status_time = time.monotonic()
             elif line:
                 self.messages.append(line)
@@ -147,7 +149,7 @@ def run_live(args):
         # glitches while it boots, so set the pattern and wait for it to be
         # running before the DMX port is opened and anything is counted.
         esp = Esp32Link(args.crosscheck)
-        esp.wait_for_pattern(args.pattern)
+        esp.wait_for_pattern(args.pattern, args.baud)
     fd = open_dmx_port(args.port)
     if args.rt:
         os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(args.rt))
@@ -215,8 +217,10 @@ def run_live(args):
                     line += (f"  | {verify.ok - prev['ok']:5d} {verify.lost - prev['lost']:5d} "
                              f"{verify.corrupt - prev['corrupt']:7d}")
                 if esp and esp.status:
-                    p, nxt, mode = esp.status
+                    p, nxt, mode, baud = esp.status
                     line += f"  esp:{tp.NAMES[p] if p < len(tp.NAMES) else p}/{mode} next={nxt}"
+                    if baud:
+                        line += f" baud={baud}"
                 print(line, flush=True)
                 if esp:
                     for m in esp.messages:
@@ -337,6 +341,8 @@ def main():
     ap.add_argument("--crosscheck", metavar="USB_PORT", help="ESP32 txtest USB serial, e.g. /dev/ttyUSB0")
     ap.add_argument("--pattern", default="cycle",
                     help=f"txtest pattern 0-{len(tp.NAMES) - 1} ({', '.join(tp.NAMES)}) or 'cycle'")
+    ap.add_argument("--baud", type=int, default=0,
+                    help="force the txtest baud for every pattern, e.g. 245000 (0 = pattern default)")
     ap.add_argument("--verify", action="store_true", help="check test patterns without the USB link")
     ap.add_argument("--rt", type=int, metavar="PRIO", help="run as SCHED_FIFO at this priority")
     args = ap.parse_args()

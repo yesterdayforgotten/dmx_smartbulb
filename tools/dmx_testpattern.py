@@ -10,8 +10,9 @@ Every packet is fully determined by (pattern, counter):
 so the probe can check each packet byte for byte and count gaps in the counter.
 """
 
-FULL, SHORT, STARTCODES, ESCAPES, VARLEN = range(5)
-NAMES = ["full512", "short24", "startcodes", "escapes", "varlen"]
+FULL, SHORT, STARTCODES, ESCAPES, VARLEN, TIMING = range(6)
+# TIMING also varies line timing per packet (baud, BREAK, MAB, gaps); see the firmware.
+NAMES = ["full512", "short24", "startcodes", "escapes", "varlen", "timing"]
 ESC_VALUES = (0xFF, 0x11, 0x13, 0x00)
 HEADER_SLOTS = 5
 
@@ -23,6 +24,8 @@ def packet(pattern, counter):
         n = 24
     elif pattern == VARLEN:
         n = HEADER_SLOTS + (counter * 37) % 508   # 5..512
+    elif pattern == TIMING:
+        n = 24 + (counter * 97) % 489             # 24..512
     else:
         n = 512
     if pattern == STARTCODES:
@@ -36,6 +39,8 @@ def packet(pattern, counter):
             slots[j] = ESC_VALUES[(counter + j) % 4]
         elif pattern == STARTCODES:
             slots[j] = (counter * 7 + j) & 0xFF
+        elif pattern == TIMING:
+            slots[j] = (counter * 3 + j) & 0xFF
         else:
             slots[j] = (counter + j) & 0xFF
     return sc, bytes(slots)
