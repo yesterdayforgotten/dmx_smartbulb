@@ -192,6 +192,7 @@ def run_live(args):
     slot_min = slot_max = None
     start = last_print = time.monotonic()
     max_read = 0
+    silent = run_silent = longest_silent = 0   # seconds with no packets, once data has started
     print("time  fps  other  slots    malf  errb  | k_oe k_fe k_brk"
           + ("  | ok/s  lost corrupt" if verify else ""))
     try:
@@ -217,6 +218,13 @@ def run_live(args):
             if now - last_print >= 1:
                 last_print = now
                 other = sum(s.other_start_codes.values())
+                got = (s.frames - prev["frames"]) + (other - prev["other"])
+                if got == 0 and (s.frames or other):
+                    silent += 1
+                    run_silent += 1
+                    longest_silent = max(longest_silent, run_silent)
+                else:
+                    run_silent = 0
                 k = kernel_counters(line_no)
                 kd = {key: (k[key] - kprev[key]) & 0xFFFFFFFF for key in k} if k and kprev else None
                 kprev = k
@@ -271,7 +279,13 @@ def run_live(args):
     print(f"malformed       {s.malformed}  (overlong {s.overlong})")
     print(f"error bytes     {s.error_bytes}   bad escapes {s.bad_escapes}   empty {s.empty}")
     print(f"largest read    {max_read} bytes")
-    failed = s.malformed > 0 or s.error_bytes > 0
+    print(f"silent seconds  {silent}   longest silence {longest_silent} s")
+    if args.max_silence and longest_silent > args.max_silence:
+        print(f"note            source went quiet for {longest_silent} s (limit {args.max_silence} s)")
+        failed_silence = True
+    else:
+        failed_silence = False
+    failed = s.malformed > 0 or s.error_bytes > 0 or failed_silence
     if k and k0:
         kd = {key: (k[key] - k0[key]) & 0xFFFFFFFF for key in k}
         print(f"kernel          oe {kd['oe']}  fe {kd['fe']}  brk {kd['brk']}  rx {kd['rx']}")
@@ -358,6 +372,8 @@ def main():
     ap.add_argument("--baud", type=int, default=0,
                     help="force the txtest baud for every pattern, e.g. 245000 (0 = pattern default)")
     ap.add_argument("--verify", action="store_true", help="check test patterns without the USB link")
+    ap.add_argument("--max-silence", type=int, default=0, metavar="S",
+                    help="FAIL if no packets arrive for more than S seconds once data has started")
     ap.add_argument("--wallclock", action="store_true", help="timestamp lines with the time of day")
     ap.add_argument("--rt", type=int, metavar="PRIO", help="run as SCHED_FIFO at this priority")
     args = ap.parse_args()

@@ -54,7 +54,7 @@ while [ "$(date +%s)" -lt "$end" ]; do
         > "$LOG/$name.tx.txt" 2>&1 &
     tx_pid=$!
     sleep 2
-    python3 "$HERE/dmx_rx_probe.py" --port "$PORT" --verify --duration "$secs" --wallclock \
+    python3 "$HERE/dmx_rx_probe.py" --port "$PORT" --verify --duration "$secs" --wallclock --max-silence 5 \
         > "$LOG/$name.txt" 2>&1
     stop_tx
     sed -n '/=== summary ===/,$p' "$LOG/$name.txt" | tail -n +2 >> "$SUMMARY"
@@ -69,5 +69,6 @@ awk '/^== [0-9]/ {name=$2}
      /^kernel/ {oe=$3; fe=$5}
      /^verified ok/ {ok=$3}
      /^lost/ {lost=$2; cor=$7; tr=$9; gsub(/\)/, "", tr)}
-     /^RESULT/ {printf "%-28s ok %-8s lost %-4s corrupt %-4s (trunc %-3s) malformed %-3s errb %-3s oe %-3s fe %-3s %s\n", name, ok, lost, cor, tr, mal, eb, oe, fe, $2}' \
+     /^silent seconds/ {sil=$6}
+     /^RESULT/ {printf "%-28s silence %-4s ok %-8s lost %-4s corrupt %-4s (trunc %-3s) malformed %-3s errb %-3s oe %-3s fe %-3s %s\n", name, sil, ok, lost, cor, tr, mal, eb, oe, fe, $2}' \
     "$SUMMARY" | tee -a "$SUMMARY"

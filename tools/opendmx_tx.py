@@ -133,6 +133,7 @@ def main():
     rng = random.Random(args.seed)
     counter = 0
     rdm_sent = 0
+    stalls = 0
     start = last_report = time.monotonic()
     sent_this_second = 0
     try:
@@ -152,7 +153,17 @@ def main():
                 idle = rng.uniform(0, 0.030)
             else:
                 baud, brk, mab, chunks, idle = 250000, args.break_us, args.mab_us, 1, 0
-            send_packet(ser, data, baud, brk, mab, chunks, rng)
+            try:
+                send_packet(ser, data, baud, brk, mab, chunks, rng)
+            except serial.SerialTimeoutException:
+                # The FTDI stopped taking data for over a second. Log it, clear
+                # out, make sure the line isn't left in BREAK, and keep going.
+                stalls += 1
+                print(f"{time.strftime('%H:%M:%S')} write stalled >1 s (stall {stalls}); recovering",
+                      flush=True)
+                ser.reset_output_buffer()
+                ser.break_condition = False
+                continue
             if idle:
                 time.sleep(idle)
 
@@ -176,7 +187,8 @@ def main():
     finally:
         ser.close()
     print(f"sent {counter} packets" + ("" if args.fade else f" (counter 0..{counter - 1})")
-          + (f", {rdm_sent} RDM exchanges" if rdm_sent else ""))
+          + (f", {rdm_sent} RDM exchanges" if rdm_sent else "")
+          + f", {stalls} write stalls")
 
 
 if __name__ == "__main__":
