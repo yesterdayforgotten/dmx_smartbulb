@@ -38,7 +38,9 @@ def kernel_counters(line_no):
         with open(PROC_TTY) as f:
             for row in f:
                 if row.startswith(f"{line_no}:"):
-                    c = {k: int(v) for k, v in re.findall(r"(\w+):(\d+)", row)}
+                    # The kernel prints these as signed 32-bit ints, so rx goes
+                    # negative after 2 GB; keep them unsigned so deltas work.
+                    c = {k: int(v) & 0xFFFFFFFF for k, v in re.findall(r"(\w+):(-?\d+)", row)}
                     return {k: c.get(k, 0) for k in ("rx", "oe", "fe", "brk", "pe")}
     except PermissionError:
         return None
@@ -207,7 +209,7 @@ def run_live(args):
                 last_print = now
                 other = sum(s.other_start_codes.values())
                 k = kernel_counters(line_no)
-                kd = {key: k[key] - kprev[key] for key in k} if k and kprev else None
+                kd = {key: (k[key] - kprev[key]) & 0xFFFFFFFF for key in k} if k and kprev else None
                 kprev = k
                 stamp = time.strftime("%H:%M:%S") if args.wallclock else f"{now - start:5.0f}"
                 line = (f"{stamp} {s.frames - prev['frames']:4d} "
@@ -262,7 +264,7 @@ def run_live(args):
     print(f"largest read    {max_read} bytes")
     failed = s.malformed > 0 or s.error_bytes > 0
     if k and k0:
-        kd = {key: k[key] - k0[key] for key in k}
+        kd = {key: (k[key] - k0[key]) & 0xFFFFFFFF for key in k}
         print(f"kernel          oe {kd['oe']}  fe {kd['fe']}  brk {kd['brk']}  rx {kd['rx']}")
         failed |= kd["oe"] > 0
     if verify:

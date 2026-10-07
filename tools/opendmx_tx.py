@@ -49,6 +49,8 @@ def main():
 
     ser = serial.Serial(args.port, baudrate=250000, bytesize=8, parity="N", stopbits=2,
                         xonxoff=False, rtscts=False, write_timeout=1)
+    # Like OLA: the Open DMX needs RTS cleared (on many units it gates the line driver).
+    ser.rts = False
     counter = 0
     start = last_report = time.monotonic()
     sent_this_second = 0

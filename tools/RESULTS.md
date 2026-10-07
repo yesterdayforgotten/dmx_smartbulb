@@ -39,14 +39,24 @@ for the ESP32 patterns and the dongle; `cyclictest` max well under 700 µs.
 | 4 varlen | load | all | | | | | | | | |
 | 4 varlen | load | CPU3 | | | | | | | | |
 
-## Enttec Open DMX dongle (step 1.6)
-QLC+ at maximum frequency, 512 channels, fades through 17, 19, 255.
-`sudo python3 tools/dmx_rx_probe.py --duration 600 --record dongle.bin`
+## Enttec Open DMX dongle (step 1.6), 2026-10-07
+Enttec Open DMX USB (FT232R) driven from the Pi by `tools/opendmx_tx.py` (RTS cleared, 120 us
+BREAK), 5-pin output to the box's 3-pin input by clip leads (1-1, 2-2, 3-3), shield MAX485 ->
+RX0 -> 1 k / 2 k divider -> pin 29 (ttyAMA3). Probe with `--verify` (counter gaps + byte check).
+Short runs only (18-20 s each); long dongle runs not done.
 
-| Load | fps | slots | malformed | error bytes | k_oe | k_fe | Result |
-|---|---|---|---|---|---|---|---|
-| idle | | | | | | | |
-| load | | | | | | | |
+| Run | fps | Frames verified | Lost | Corrupt | Malformed | Error bytes | k_oe | k_fe | Result |
+|---|---|---|---|---|---|---|---|---|---|
+| full512 | 31.1 | 623 | 0 | 0 | 0 | 0 | 0 | 0 | PASS |
+| startcodes (00/17/CF) | 31 | 559 | 0 | 0 | 0 | 0 | 0 | 0 | PASS |
+| escapes (0x11/0x13/0xFF) | 31.9 | 575 | 0 | 0 | 0 | 0 | 0 | 0 | PASS |
+| varlen (5-512 slots) | 50.3 | 906 | 0 | 0 | 0 | 0 | 0 | 0 | PASS |
+| fade (ch 17-19 = 11/13/FF) | 31.2 | n/a | n/a | n/a | 0 | 0 | 0 | 0 | PASS |
+| full512 under load | 28.4 | 512 | 0 | 0 | 0 | 0 | 0 | 0 | PASS |
+
+The first attempt saw nothing on pin 29: the clip leads were on the wrong XLR pins. The 3-pin
+and 5-pin faces differ (pins 1 and 2 are side by side on top of a 3-pin, on the right side of
+a 5-pin); only pin 3 sits in the same place.
 
 ## Quick suite, 2026-10-06 19:20 (18 s per run)
 `sudo tools/phase1_suite.sh 18`, ESP32 on pin 29. All 22 runs PASS: patterns 0-5 idle, under load,
@@ -71,4 +81,4 @@ Every one of the 35,851 per-second lines was clean. The ttyAMA3 lifetime oe coun
 - Open: ESP32 on pin 10 (GPIO15, ttyAMA0) corrupts bits (0 read as 1) only while GPIO15's pull-up
   is on; clean with no pull. Wire 0 ohm, static levels 0.02 / 3.32 V. Same wire on pin 29 is clean
   with the pull-up. Needs a scope, or a UART5 (pin 33) comparison.
-- Still to do: step 1.6, the Enttec -> shield -> divider -> pin 29 path.
+- Step 1.6 done in short runs (above). Remaining: the ColorSource capture at the venue (phase 5).
