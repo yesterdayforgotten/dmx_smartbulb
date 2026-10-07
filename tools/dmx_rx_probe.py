@@ -52,11 +52,16 @@ class Verifier:
 
     def __init__(self):
         self.ok = self.corrupt = self.lost = self.foreign = 0
+        self.truncated = 0   # corrupt packets that are a correct prefix (sender cut short)
+        self.rdm = 0         # 0xCC packets: RDM traffic, not test packets
         self.restarts = self.dup_or_back = 0
         self.first = self.last = None
         self.by_pattern = {}
 
     def add(self, frame):
+        if frame.start_code == 0xCC:
+            self.rdm += 1
+            return
         r = tp.check(frame.start_code, frame.slots)
         if r is None:
             self.foreign += 1
@@ -65,6 +70,10 @@ class Verifier:
         if not ok:
             # Don't trust the counter of a corrupt packet.
             self.corrupt += 1
+            sc, expect = tp.packet(pattern, counter)
+            if sc == frame.start_code and len(frame.slots) < len(expect) \
+                    and expect.startswith(frame.slots):
+                self.truncated += 1
             return
         self.ok += 1
         self.by_pattern[pattern] = self.by_pattern.get(pattern, 0) + 1
@@ -270,8 +279,10 @@ def run_live(args):
     if verify:
         print(f"verified ok     {verify.ok}   by pattern "
               + ", ".join(f"{tp.NAMES[p]}:{n}" for p, n in sorted(verify.by_pattern.items())))
-        print(f"lost            {verify.lost} (+{tail_lost} at end)   corrupt {verify.corrupt}   "
-              f"non-test {verify.foreign}   dup/back {verify.dup_or_back}   esp32 resets {verify.restarts}")
+        print(f"lost            {verify.lost} (+{tail_lost} at end)   corrupt {verify.corrupt} "
+              f"(truncated {verify.truncated})   "
+              f"non-test {verify.foreign}   dup/back {verify.dup_or_back}   esp32 resets {verify.restarts}"
+              + (f"   rdm {verify.rdm}" if verify.rdm else ""))
         if verify.first is not None:
             print(f"counter range   {verify.first} .. {verify.last}")
         failed |= verify.lost + tail_lost + verify.corrupt > 0 or verify.ok == 0

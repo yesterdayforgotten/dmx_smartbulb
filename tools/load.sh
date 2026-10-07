@@ -1,6 +1,6 @@
 #!/bin/bash
-# Background load for the phase 1 "under load" runs: SD card writes, network and
-# CPU hogs. Runs until Ctrl-C (or for N seconds: tools/load.sh 600).
+# Background load for the phase 1 "under load" runs: SD card writes, network
+# (flood ping + bulb-shaped UDP, see net_load.py) and CPU hogs. Runs until Ctrl-C (or for N seconds: tools/load.sh 600).
 #   sudo tools/load.sh [seconds]
 # Network load is a flood ping of the default gateway (needs root).
 set -uo pipefail
@@ -26,6 +26,10 @@ if [ -n "$GW" ] && [ "$(id -u)" = 0 ]; then
 else
     echo "no network load (needs root and a default gateway)"
 fi
+
+# Bulb-shaped UDP traffic to the gateway's discard port (see net_load.py).
+python3 "$(dirname "$0")/net_load.py" > /dev/null 2>&1 & pids+=($!)
+echo "bulb-shaped UDP traffic running"
 
 echo "load running (pids ${pids[*]})"
 if [ "$DUR" -gt 0 ]; then sleep "$DUR"; else wait; fi
