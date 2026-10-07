@@ -209,7 +209,8 @@ def run_live(args):
                 k = kernel_counters(line_no)
                 kd = {key: k[key] - kprev[key] for key in k} if k and kprev else None
                 kprev = k
-                line = (f"{now - start:5.0f} {s.frames - prev['frames']:4d} "
+                stamp = time.strftime("%H:%M:%S") if args.wallclock else f"{now - start:5.0f}"
+                line = (f"{stamp} {s.frames - prev['frames']:4d} "
                         f"{other - prev['other']:5d}  {slot_min or 0:3d}-{slot_max or 0:<3d} "
                         f"{s.malformed - prev['malformed']:5d} {s.error_bytes - prev['err']:5d}  | ")
                 line += (f"{kd['oe']:4d} {kd['fe']:4d} {kd['brk']:5d}" if kd else "   -    -     -")
@@ -344,6 +345,7 @@ def main():
     ap.add_argument("--baud", type=int, default=0,
                     help="force the txtest baud for every pattern, e.g. 245000 (0 = pattern default)")
     ap.add_argument("--verify", action="store_true", help="check test patterns without the USB link")
+    ap.add_argument("--wallclock", action="store_true", help="timestamp lines with the time of day")
     ap.add_argument("--rt", type=int, metavar="PRIO", help="run as SCHED_FIFO at this priority")
     args = ap.parse_args()
     if args.selftest is not None:

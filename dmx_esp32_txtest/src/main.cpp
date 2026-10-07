@@ -21,6 +21,8 @@
 //   p<n>     pin pattern n           c   cycle all patterns, 10 s each
 //   b<baud>  force this baud for every pattern (b0 = pattern default)
 //   ?        status now
+//   l / h    stop sending and hold the line low / high (for a meter); any
+//            other command (e.g. p0) resumes
 // Status line, once a second:
 //   S <pattern> <next_counter> <pin|cycle> baud=<forced or 0> fps=<n>
 
@@ -62,6 +64,7 @@ static uint32_t pattern_since = 0;
 static uint32_t frames_this_second = 0, fps = 0;
 static uint32_t last_status = 0;
 static Timing last_timing;
+static char hold = 0;  // 'l' or 'h' while holding the line for a meter
 static char cmd[16];
 static int cmd_len = 0;
 
@@ -183,6 +186,10 @@ static void print_status() {
 }
 
 static void handle_command(const char *line) {
+  if (hold) {
+    hold = 0;
+    uart_set_line_inverse(PORT, UART_SIGNAL_INV_DISABLE);
+  }
   if (line[0] == 'p' && line[1] >= '0' && line[1] < '0' + NUM_PATTERNS) {
     pattern = line[1] - '0';
     cycling = false;
@@ -200,6 +207,12 @@ static void handle_command(const char *line) {
     } else {
       Serial.printf("baud out of range: %s\n", line + 1);
     }
+  } else if (line[0] == 'l' || line[0] == 'h') {
+    wait_tx_idle();
+    hold = line[0];
+    uart_set_line_inverse(PORT, hold == 'l' ? UART_SIGNAL_TXD_INV : UART_SIGNAL_INV_DISABLE);
+    Serial.printf("holding the line %s; send any command to resume\n", hold == 'l' ? "LOW" : "HIGH");
+    return;
   } else if (line[0] == '?') {
     const Timing &t = last_timing;
     Serial.printf("last packet: baud %u break %u MAB %u gaps %s/%u idle %u\n", t.baud,
@@ -251,6 +264,12 @@ void loop() {
     pattern = (pattern + 1) % NUM_PATTERNS;
     pattern_since = now;
     Serial.printf("pattern %s\n", NAMES[pattern]);
+  }
+
+  if (hold) {
+    poll_serial();
+    delay(10);
+    return;
   }
 
   size_t size = build_packet(pattern, counter);
