@@ -99,3 +99,28 @@ def test_dmx_loss_blackout(tmp_path):
         finally:
             fleet.stop()
     asyncio.run(go())
+
+
+def test_idle_bulbs_show_online(tmp_path):
+    """With no DMX and nothing sent, status queries still mark bulbs online."""
+    async def go():
+        fleet = await FakeBulbFleet(2, port=PORT).start()
+        try:
+            engine = make_engine(tmp_path, fleet, recording(tmp_path))
+            await engine.start()
+            engine.receiver.stop()                       # no DMX at all
+            engine._poll_quiet_bulbs(time.monotonic())
+            await asyncio.sleep(0.2)
+            assert engine.status()["online"] == 2
+            assert all(b.commands == 0 for b in fleet.bulbs)   # nothing changed on the bulbs
+            fleet.bulbs[1].online = False
+            for rt in engine.sender.bulbs.values():
+                rt.last_reply -= 10
+                rt.last_poll = -1e9
+            engine._poll_quiet_bulbs(time.monotonic())
+            await asyncio.sleep(0.2)
+            assert engine.status()["online"] == 1
+            engine.stop()
+        finally:
+            fleet.stop()
+    asyncio.run(go())

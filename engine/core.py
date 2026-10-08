@@ -16,6 +16,7 @@ LOSS_DETECT_S = 1.0          # no frame for this long means DMX is lost
 TICK_S = 0.01                # tick at least this often without new frames
 REDISCOVER_AFTER_S = 10.0    # a bulb offline this long triggers rediscovery
 REDISCOVER_EVERY_S = 30.0    # at most this often
+POLL_QUIET_S = 3.0           # status-query bulbs not heard from for this long
 
 
 class Engine:
@@ -115,6 +116,7 @@ class Engine:
             n += 1
             self.receiver.check()
             now = time.monotonic()
+            self._poll_quiet_bulbs(now)
             offline = [rt for rt in self.sender.bulbs.values()
                        if rt.ip and rt.sends and not rt.online(now)
                        and (rt.last_reply is None or now - rt.last_reply > REDISCOVER_AFTER_S)]
@@ -126,6 +128,18 @@ class Engine:
                 log.info("frames %d, sent %d, online %d/%d, latency p95 %s ms",
                          st["input"]["frames"], st["sender"]["sent"], st["online"], len(self.cfg["bulbs"]),
                          st["sender"]["latency_p95_ms"])
+
+    def _poll_quiet_bulbs(self, now):
+        """Ask bulbs that haven't been heard from lately for their status, so
+        online/offline is right even when nothing is being sent. A status query
+        doesn't change the bulb; its reply updates last_reply like any other."""
+        for rt in self.sender.bulbs.values():
+            if not rt.ip:
+                continue
+            quiet = rt.last_reply is None or now - rt.last_reply > POLL_QUIET_S
+            if quiet and now - rt.last_send > POLL_QUIET_S and now - rt.last_poll > POLL_QUIET_S:
+                rt.last_poll = now
+                self.transport.send(rt.ip, kasa.SYSINFO)
 
     async def rediscover(self):
         """Find bulbs by MAC and update any whose IP changed. Saves the config."""

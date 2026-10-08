@@ -91,6 +91,7 @@ class BulbRuntime:
         self.replies = self.misses = self.sends = 0
         self.rtt = None              # smoothed round-trip time, s
         self.hold_until = 0.0        # ignore DMX until then (identify)
+        self.last_poll = -math.inf   # last status query (engine polls quiet bulbs)
 
     @property
     def dirty(self):
