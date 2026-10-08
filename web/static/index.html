@@ -493,7 +493,7 @@
          @scroll.window="menuFor = null" @resize.window="menuFor = null">
       <div class="menu-info stats">
         <template x-for="[k, v] in bulbStats(menuFor)" :key="k">
-          <div class="row nowrap"><span class="muted" x-text="k"></span><span style="flex:1"></span><span class="mono" x-text="v"></span></div>
+          <div class="stat"><span class="muted" x-text="k"></span><span class="mono" x-text="v"></span></div>
         </template>
       </div>
       <div class="menu-info"><span class="muted">Power-on default</span><br><span x-text="powerOnText(menuFor)"></span></div>

@@ -201,3 +201,5 @@ input[type=number].ch { width: 5em; }
 .menu-cell { white-space: nowrap; }
 .bulbs-table.slim .id-btn { min-height: 24px; height: 24px; padding: 0 8px; font-size: 12px; }
 .menu-info.stats { display: grid; gap: 1px; border-top: 0; }
+.menu-info .stat { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: baseline; }
+.menu-info .stat > :last-child { text-align: right; }
