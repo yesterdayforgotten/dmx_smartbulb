@@ -238,8 +238,7 @@
                 <td><input type="checkbox" :checked="selected.includes(b.mac)" @change="toggleSelect(b.mac)" :aria-label="'Select ' + b.name"></td>
                 <td><button type="button" class="lamp-btn" :class="!isOnline(b.mac) && 'off'" :style="lampStyle(b.mac, true)"
                             @click="openSheet(b.mac)" :aria-label="'Details for ' + b.name" :title="stateText(b.mac)"></button></td>
-                <td class="name-cell"><button type="button" class="link" @click="openSheet(b.mac)" x-text="b.name"></button>
-                  <span class="muted mono small" x-text="b.ip || 'no IP'"></span></td>
+                <td class="name-cell"><button type="button" class="link" @click="openSheet(b.mac)" x-text="b.name"></button></td>
                 <td>
                   <div class="row nowrap">
                     <select :id="'patch-' + b.mac" @change="setPatchMode(b, $event.target.value)" aria-label="Patch">
@@ -642,7 +641,7 @@
               <span x-text="stateText(sheet)"></span>
             </div>
             <label class="field"><span>Name</span>
-              <input id="sheetname" type="text" :value="cfg.bulbs[sheet].name" @change="editBulb(sheet, {name: $event.target.value})"></label>
+              <input id="sheetname" type="text" maxlength="31" :value="cfg.bulbs[sheet].name" @change="editBulb(sheet, {name: $event.target.value})"></label>
             <dl class="facts">
               <dt>IP</dt><dd class="mono" x-text="cfg.bulbs[sheet].ip || '—'"></dd>
               <dt>MAC</dt><dd class="mono" x-text="sheet"></dd>

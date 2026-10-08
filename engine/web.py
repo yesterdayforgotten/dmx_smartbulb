@@ -205,7 +205,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         return {"ok": True, "mac": mac}
 
     @app.patch("/api/bulbs/{mac}")
-    def edit_bulb(mac: str, request: Request, body: dict = Body(...)):
+    async def edit_bulb(mac: str, request: Request, body: dict = Body(...)):
         need_auth(request)
         bulb_or_404(mac)
         allowed = {"name", "channel", "follow", "dmx", "groups", "pos", "ip"}
@@ -221,6 +221,8 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
             if "follow" in body and body["follow"] is not None:
                 b["channel"] = None
         change(apply)
+        if "name" in body and str(body["name"]).strip():
+            return {"ok": True, "device": await engine.rename_device(mac, str(body["name"]).strip())}
         return {"ok": True}
 
     @app.delete("/api/bulbs/{mac}")

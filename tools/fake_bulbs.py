@@ -73,6 +73,9 @@ class FakeBulb(asyncio.DatagramProtocol):
     def handle(self, cmd):
         if "system" in cmd and "get_sysinfo" in cmd["system"]:
             return {"system": {"get_sysinfo": self.sysinfo()}}
+        if "system" in cmd and "set_dev_alias" in cmd["system"]:
+            self.alias = cmd["system"]["set_dev_alias"]["alias"]
+            return {"system": {"set_dev_alias": {"err_code": 0}}}
         svc = cmd.get(LIGHTING)
         if svc is None:
             return {"err_code": -1, "err_msg": "module not support"}

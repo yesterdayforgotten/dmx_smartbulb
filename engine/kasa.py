@@ -94,6 +94,12 @@ def preferred_state(hue, sat, bri, kelvin=0):
 
 
 SYSINFO = {"system": {"get_sysinfo": None}}
+ALIAS_MAX = 31          # longest name the bulb firmware stores
+
+
+def set_alias(name):
+    """Rename the bulb itself (what get_sysinfo and the Kasa app show)."""
+    return {"system": {"set_dev_alias": {"alias": name[:ALIAS_MAX]}}}
 # Light state only: a ~160-byte reply instead of get_sysinfo's ~1 KB. Used to
 # check quiet bulbs are still online without wasting airtime.
 LIGHT_STATE = {LIGHTING: {"get_light_state": {}}}
@@ -104,8 +110,6 @@ IDLE_CHECK = {LIGHTING: {"get_light_state": {}, "get_light_parameters": {}}}
 INFO_CHECK = {LIGHTING: {"get_default_behavior": {}, "get_light_parameters": {}}}
 LAST_STATE_ON = {LIGHTING: {"set_default_behavior": {"soft_on": {"mode": "last_status"},
                                                      "hard_on": {"mode": "last_status"}}}}
-# WiFi (WMM) priority for our packets, as IP TOS bytes. Broadcom APs map the
-# top three DSCP bits to an access category: CS5 -> video, CS6 -> voice.
 
 
 def power_from_reply(reply):

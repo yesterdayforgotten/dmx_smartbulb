@@ -384,6 +384,10 @@ function app() {
     },
     async editBulb(mac, change) {
       const r = await this.act(this.api('PATCH', `/api/bulbs/${mac}`, change));
+      if (r && r.device) {
+        if (r.device === 'renamed') this.say('Renamed (saved on the bulb too)');
+        else this.say(`Renamed here, but not on the bulb (${r.device}). It will keep its old device name.`, true);
+      }
       await this.loadState();
       return r;
     },
@@ -414,6 +418,7 @@ function app() {
         ['WiFi signal', i.rssi != null ? i.rssi + ' dBm' : '–'],
         ['Power', i.power_mw != null ? (i.power_mw / 1000).toFixed(1) + ' W' : '–'],
         ['IP', (this.cfg.bulbs[mac] || {}).ip || '–'],
+        ['MAC', mac.match(/../g).join(':')],
         ['Firmware', ((i.fw || '?').split(' ')[0]) + (this.fwUpdatable(mac) ? ' ⬆' : ''), this.fwUpdatable(mac) ? 'warn-text' : '', this.fwTitle(mac)],
       ];
       return out;

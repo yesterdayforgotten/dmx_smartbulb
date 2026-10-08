@@ -353,6 +353,28 @@ class Engine:
         await self.read_power_on([m for m, ok in results.items() if ok])
         return results
 
+    async def rename_device(self, mac, name):
+        """Store the name on the bulb too. Returns "renamed", "offline" or an error.
+        The bulb's next reply may be a light-state echo rather than ours, so try a
+        few times."""
+        rt = self.sender.bulbs.get(mac)
+        if not rt or not rt.ip:
+            return "offline"
+        got_reply = False
+        for _ in range(3):
+            r = await self.transport.request(rt.ip, kasa.set_alias(name), timeout=1.0)
+            if r is None:
+                continue
+            got_reply = True
+            res = r.get("system", {}).get("set_dev_alias")
+            if res is None:
+                continue                      # someone else's reply
+            if res.get("err_code") == 0:
+                self.info.setdefault(mac, {})["alias"] = name[:kasa.ALIAS_MAX]
+                return "renamed"
+            return res.get("err_msg") or f"error {res.get('err_code')}"
+        return "no answer" if got_reply else "offline"
+
     async def bulb_info(self, mac):
         rt = self.sender.bulbs.get(mac)
         if not rt or not rt.ip:

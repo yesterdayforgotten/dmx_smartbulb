@@ -272,3 +272,16 @@ def test_board_show_on_a_group(tmp_path, monkeypatch):
             assert (await h.client.post("/api/board/stop-show", json={"id": r.json()["id"]})).status_code == 200
             assert not h.engine.board.runs
     run(go())
+
+
+def test_rename_is_stored_on_the_bulb(tmp_path):
+    async def go():
+        async with Harness(tmp_path) as h:
+            await h.login()
+            mac = list(h.engine.cfg["bulbs"])[0]
+            r = await h.client.patch(f"/api/bulbs/{mac}", json={"name": "Stage left 1"})
+            assert r.json() == {"ok": True, "device": "renamed"}
+            assert h.engine.cfg["bulbs"][mac]["name"] == "Stage left 1"
+            assert h.fleet.bulbs[0].alias == "Stage left 1"
+            assert (await h.client.patch(f"/api/bulbs/{mac}", json={"dmx": False})).json() == {"ok": True}
+    run(go())
