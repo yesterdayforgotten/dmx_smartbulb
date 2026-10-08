@@ -110,7 +110,8 @@ def test_esp32_receiver_over_a_pty():
                 time.sleep(0.02)
             return r.snapshot()[2][:3] == bytes([7, 7, 7])
         assert wait_for(frames_arrive, 10.0)
-        assert wait_for(lambda: r.stats()["frames"] >= 3, 5.0)
+        # The frame counter (updated once a second) catches up with what was published.
+        assert wait_for(lambda: r.stats()["frames"] >= r.snapshot()[0] > 0, 5.0)
     finally:
         r.stop()
         os.close(master)
