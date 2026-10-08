@@ -558,8 +558,16 @@ function app() {
       return `${t.length} bulbs`;
     },
     queueSend(state) {
-      clearTimeout(this._sendTimer);
-      this._sendTimer = setTimeout(() => this.act(this.api('POST', '/api/control', { macs: this.targets(), state })), 60);
+      const macs = this.targets();
+      this.boardThrottle('control', () => this.act(this.api('POST', '/api/control', { macs, state })));
+    },
+    previewPowerOn() {
+      // Show the power-on look on the bulbs while the sliders move (like a manual set).
+      if (this.powerOn.mode === 'last') return;
+      const p = this.powerOn;
+      const state = p.mode === 'white' ? { k: p.k, v: p.v } : { h: p.h, s: p.s, v: p.v };
+      const macs = this.targets(true);
+      this.boardThrottle('poweron', () => this.act(this.api('POST', '/api/control', { macs, state })));
     },
     sendColor() {
       if (this.mode === 'temp') { this.queueSend({ k: this.temp, v: this.color.v }); return; }

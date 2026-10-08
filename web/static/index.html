@@ -297,26 +297,27 @@
           <span x-text="'Applies to ' + (selected.length ? selected.length + ' selected' : 'all ' + bulbList().length) + ' bulb(s) · current: ' + powerOnSummary().text"></span>
         </div>
         <div class="row">
-          <button class="btn small" type="button" :aria-pressed="powerOn.mode === 'white'" @click="powerOn.mode = 'white'">White</button>
-          <button class="btn small" type="button" :aria-pressed="powerOn.mode === 'color'" @click="powerOn.mode = 'color'">Color</button>
+          <button class="btn small" type="button" :aria-pressed="powerOn.mode === 'white'" @click="powerOn.mode = 'white'; previewPowerOn()">White</button>
+          <button class="btn small" type="button" :aria-pressed="powerOn.mode === 'color'" @click="powerOn.mode = 'color'; previewPowerOn()">Color</button>
           <button class="btn small" type="button" :aria-pressed="powerOn.mode === 'last'" @click="powerOn.mode = 'last'">Last state</button>
           <span class="swatch" x-show="powerOn.mode !== 'last'" :style="cssFromState(powerOn.mode === 'white' ? {k: powerOn.k, v: powerOn.v} : {h: powerOn.h, s: powerOn.s, v: powerOn.v}, true)"></span>
         </div>
         <div class="row" x-show="powerOn.mode === 'white'">
           <label class="field" style="flex:1; min-width:180px"><span x-text="'White ' + powerOn.k + ' K'"></span>
-            <input id="pok" type="range" class="temp-range" min="2500" max="6500" step="50" x-model.number="powerOn.k"></label>
+            <input id="pok" type="range" class="temp-range" min="2500" max="6500" step="50" x-model.number="powerOn.k" @input="previewPowerOn()"></label>
         </div>
         <div class="row" x-show="powerOn.mode === 'color'">
           <label class="field" style="flex:1; min-width:180px"><span x-text="'Hue ' + powerOn.h + '°'"></span>
-            <input id="poh" type="range" class="hue-range" min="0" max="359" x-model.number="powerOn.h"></label>
+            <input id="poh" type="range" class="hue-range" min="0" max="359" x-model.number="powerOn.h" @input="previewPowerOn()"></label>
           <label class="field" style="flex:1; min-width:140px"><span x-text="'Saturation ' + powerOn.s + '%'"></span>
-            <input id="pos" type="range" min="0" max="100" x-model.number="powerOn.s"></label>
+            <input id="pos" type="range" min="0" max="100" x-model.number="powerOn.s" @input="previewPowerOn()"></label>
         </div>
         <div class="row" x-show="powerOn.mode !== 'last'">
           <label class="field" style="flex:1; min-width:180px"><span x-text="'Brightness ' + powerOn.v + '%'"></span>
-            <input id="pov" type="range" min="1" max="100" x-model.number="powerOn.v"></label>
+            <input id="pov" type="range" min="1" max="100" x-model.number="powerOn.v" @input="previewPowerOn()"></label>
         </div>
         <p class="muted small" style="margin:0" x-show="powerOn.mode === 'last'">The bulb comes back on as it was when the power went off.</p>
+        <p class="muted small" style="margin:0" x-show="powerOn.mode !== 'last'">Moving the sliders shows the look on the bulbs now (until DMX changes them); Apply saves it as their power-on default.</p>
         <div class="row"><button class="btn" type="button" @click="setPowerOn()" x-text="`Apply to ${targets(true).length} bulb(s)`"></button></div>
       </section>
     </div>
