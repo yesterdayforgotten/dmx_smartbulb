@@ -398,3 +398,23 @@ def test_one_lost_idle_check_does_not_flag_offline():
     # The check at 3 s is lost; at 6.5 s (just before the next one answers) it's still online.
     assert s.bulb_status(6.5)[A]["online"]
     assert not s.bulb_status(8.0)[A]["online"]       # two checks missed: offline
+
+
+def test_hsic_white_at_saturation_zero():
+    from engine.sender import cct_to_kelvin
+    assert dmx_to_state((10, 0, 255, 0), "linear") == ("temp", 2500, 100)
+    assert dmx_to_state((10, 0, 255, 255), "linear") == ("temp", 6500, 100)
+    assert dmx_to_state((10, 2, 128, 128), "linear")[0] == "temp"        # sat byte <= 2 rounds to 0%
+    assert dmx_to_state((0, 255, 255, 128), "linear") == ("hsv", 0, 100, 100)   # colored: CCT ignored
+    assert dmx_to_state((10, 0, 255), "linear")[0] == "hsv"              # HSI bulbs never go white
+    assert cct_to_kelvin(128) == 4510
+
+
+def test_hsic_bulb_reads_fourth_channel():
+    s, sent = make()
+    mac = next(iter(s.bulbs))
+    s.bulbs[mac].size = 4
+    data = bytearray(512)
+    data[0:4] = bytes((0, 0, 255, 255))
+    s.update_dmx(bytes(data), 1.0, 1.0)
+    assert s.bulbs[mac].target == ("temp", 6500, 100)

@@ -7,6 +7,7 @@ import logging
 import time
 
 from engine import kasa
+from engine.config import FOOTPRINT, group_size
 from engine.receiver import Receiver
 from engine.sender import HIST_EDGES_MS, Sender, histogram, percentile
 
@@ -84,16 +85,16 @@ class Engine:
             self.stop()
 
     def patched_fixtures(self):
-        """[(label, start channel)] for every patched address, in channel order:
-        solo bulbs, and group channels (labeled with the group name)."""
+        """[(label, start channel, channels)] for every patched address, in channel
+        order: solo bulbs, and group channels (labeled with the group name)."""
         seen = {}
         for name, g in self.cfg["groups"].items():
             if g["channel"] is not None:
-                seen.setdefault(g["channel"], f"Group {name}")
+                seen.setdefault(g["channel"], (f"Group {name}", group_size(self.cfg, name)))
         for b in self.cfg["bulbs"].values():
             if b["channel"] is not None and not b["follow"]:
-                seen.setdefault(b["channel"], b["name"] or "bulb")
-        return sorted(((label, ch) for ch, label in seen.items()), key=lambda x: x[1])
+                seen.setdefault(b["channel"], (b["name"] or "bulb", FOOTPRINT[b["mode"]]))
+        return sorted(((label, ch, size) for ch, (label, size) in seen.items()), key=lambda x: x[1])
 
     def group_fixtures(self, name):
         """Start channels of a group's fixtures: its shared channel, plus members on

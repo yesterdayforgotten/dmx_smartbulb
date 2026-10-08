@@ -147,3 +147,20 @@ def test_following_a_group_without_a_channel_is_flagged():
     cfg = validate({"groups": {"G": {"channel": None}},
                     "bulbs": {A: {"ip": "10.0.0.1", "follow": "G", "name": "a"}}})
     assert patch_conflicts(cfg) == ["a follows group G, which has no channel, so it gets no DMX"]
+
+
+def test_hsic_takes_four_channels():
+    from engine.config import next_free_channel, patch_conflicts, validate
+    cfg = validate({"bulbs": {"AA0000000001": {"name": "a", "channel": 1, "mode": "hsic"},
+                              "AA0000000002": {"name": "b", "channel": 4}}})
+    assert any("channel 4" in w for w in patch_conflicts(cfg))
+    assert next_free_channel(cfg) == 7
+    assert next_free_channel(cfg, size=4) == 7
+    cfg["bulbs"]["AA0000000002"]["channel"] = 5
+    assert not patch_conflicts(cfg)
+    import pytest
+    from engine.config import ConfigError
+    with pytest.raises(ConfigError):
+        validate({"bulbs": {"AA0000000001": {"name": "a", "channel": 510, "mode": "hsic"}}})
+    with pytest.raises(ConfigError):
+        validate({"bulbs": {"AA0000000001": {"name": "a", "mode": "rgbw"}}})

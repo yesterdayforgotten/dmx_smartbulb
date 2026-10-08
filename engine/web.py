@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from engine import auth, firmware
-from engine.config import ConfigError, next_free_channel, patch_conflicts
+from engine.config import FOOTPRINT, ConfigError, next_free_channel, patch_conflicts
 
 STATIC = Path(__file__).resolve().parent.parent / "web" / "static"
 COOKIE = "dmxs"
@@ -209,7 +209,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
     async def edit_bulb(mac: str, request: Request, body: dict = Body(...)):
         need_auth(request)
         bulb_or_404(mac)
-        allowed = {"name", "channel", "follow", "dmx", "groups", "pos", "ip"}
+        allowed = {"name", "channel", "follow", "dmx", "groups", "pos", "ip", "mode"}
         unknown = set(body) - allowed
         if unknown:
             raise HTTPException(400, f"can't change {', '.join(sorted(unknown))}")
@@ -250,11 +250,12 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
                 c["bulbs"][mac]["follow"] = None
             ch = start
             for mac in macs:
-                ch = next_free_channel(c, ch)
+                size = FOOTPRINT[c["bulbs"][mac]["mode"]]
+                ch = next_free_channel(c, ch, size)
                 if ch is None:
                     raise ConfigError(["not enough free channels"])
                 c["bulbs"][mac]["channel"] = ch
-                ch += 3
+                ch += size
         change(apply)
         return {"ok": True}
 
@@ -406,12 +407,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         board_running()
         chans = [int(c) for c in body.get("channels") or []]
         if "k" in body:
-            # Approximate white at a color temperature with low saturation
-            # towards orange (warm) or blue (cool) - DMX input is hue/sat/bri.
-            k = float(body["k"])
-            warm = max(0.0, min(1.0, (6500 - k) / 4000))
-            h, sat = (30, round(35 * warm)) if warm > 0.15 else (220, round(15 * (1 - warm)))
-            engine.board.set_fixture_color(chans, h, sat, int(body.get("v", 100)))
+            engine.board.set_fixture_white(chans, float(body["k"]), int(body.get("v", 100)))
         else:
             engine.board.set_fixture_color(chans, int(body.get("h", 0)), int(body.get("s", 0)), int(body.get("v", 0)))
         return {"ok": True}

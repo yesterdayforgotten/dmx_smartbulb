@@ -2,8 +2,9 @@
 
 Layout (see DEFAULTS for every setting):
 
-    bulbs   {MAC: {name, ip, channel | follow, dmx, groups, pos}}
-            channel: the bulb's own first DMX channel (1-510; uses N..N+2)
+    bulbs   {MAC: {name, ip, channel | follow, dmx, groups, pos, mode}}
+            channel: the bulb's own first DMX channel (uses N..N+2, or N..N+3 in HSIC)
+            mode:    "hsi" (hue, saturation, intensity) or "hsic" (+ color temperature)
             follow:  a group name, to use that group's shared channel instead
     groups  {name: {channel}}   channel may be null (a group used only for selection)
     looks   {name: {MAC: {"h", "s", "v"} or {"k", "v"}}}   Kasa units
@@ -26,7 +27,10 @@ from pathlib import Path
 
 DEFAULT_PATH = Path("/boot/firmware/dmx_smartbulb/config.json")
 MAX_BULBS = 170          # 512 channels / 3
-MAX_CHANNEL = 510        # a bulb uses N, N+1, N+2
+MAX_CHANNEL = 510        # a bulb uses N, N+1, N+2 (N+3 too in HSIC mode)
+# Channels per mode. HSIC adds a color-temperature channel: at saturation 0
+# the bulb uses its white LEDs at that temperature (as ETC's HSIC fixtures do).
+FOOTPRINT = {"hsi": 3, "hsic": 4}
 CURVES = ("linear", "square", "scurve")
 LOSS_MODES = ("hold", "look", "blackout")
 
@@ -58,7 +62,7 @@ DEFAULTS = {
 }
 
 BULB_DEFAULTS = {"name": "", "ip": None, "channel": None, "follow": None,
-                 "dmx": True, "groups": [], "pos": None}
+                 "dmx": True, "groups": [], "pos": None, "mode": "hsi"}
 
 _MAC = re.compile(r"^[0-9A-F]{12}$")
 
@@ -127,8 +131,11 @@ def validate(raw):
             seen_ips[b["ip"]] = b["name"] or mac
         if b["channel"] is not None and b["follow"] is not None:
             problems.append(f"{label}: set either its own channel or a group to follow, not both")
+        if b["mode"] not in FOOTPRINT:
+            problems.append(f"{label}: mode must be hsi or hsic")
+            b["mode"] = "hsi"
         if b["channel"] is not None:
-            _num(problems, f"{label} channel", b["channel"], 1, MAX_CHANNEL, integer=True)
+            _num(problems, f"{label} channel", b["channel"], 1, 513 - FOOTPRINT[b["mode"]], integer=True)
         if b["follow"] is not None and b["follow"] not in groups:
             problems.append(f"{label} follows group {b['follow']!r}, which doesn't exist")
         if not isinstance(b["dmx"], bool):
@@ -210,8 +217,19 @@ def bulb_channel(cfg, mac):
     return b["channel"]
 
 
+def group_size(cfg, name):
+    """Channels a group's shared address takes: 4 if any member following it is HSIC."""
+    return max([3] + [FOOTPRINT[b["mode"]] for b in cfg["bulbs"].values() if b["follow"] == name])
+
+
+def address_size(cfg, mac):
+    """Channels the address a bulb listens to takes (its own, or its group's)."""
+    b = cfg["bulbs"][mac]
+    return group_size(cfg, b["follow"]) if b["follow"] else FOOTPRINT[b["mode"]]
+
+
 def patch_conflicts(cfg):
-    """Warnings (not errors) for bulbs whose 3-channel ranges overlap. Bulbs
+    """Warnings (not errors) for bulbs whose channel ranges overlap. Bulbs
     following the same group share a range on purpose and aren't reported."""
     users = {}  # channel -> set of owners ("group X" or a bulb name)
     for mac, b in cfg["bulbs"].items():
@@ -219,7 +237,7 @@ def patch_conflicts(cfg):
         if ch is None:
             continue
         owner = f"group {b['follow']}" if b["follow"] else (b["name"] or mac)
-        for c in range(ch, ch + 3):
+        for c in range(ch, ch + address_size(cfg, mac)):
             users.setdefault(c, set()).add(owner)
     warnings, seen = [], set()
     for c in sorted(users):
@@ -233,18 +251,18 @@ def patch_conflicts(cfg):
     return warnings
 
 
-def next_free_channel(cfg, start=1):
-    """Lowest channel >= start where three channels are unused, or None."""
+def next_free_channel(cfg, start=1, size=3):
+    """Lowest channel >= start where `size` channels are unused, or None."""
     used = set()
     for mac in cfg["bulbs"]:
         ch = bulb_channel(cfg, mac)
         if ch is not None:
-            used.update(range(ch, ch + 3))
-    for g in cfg["groups"].values():
+            used.update(range(ch, ch + address_size(cfg, mac)))
+    for name, g in cfg["groups"].items():
         if g["channel"] is not None:
-            used.update(range(g["channel"], g["channel"] + 3))
-    for ch in range(max(1, start), MAX_CHANNEL + 1):
-        if not used & {ch, ch + 1, ch + 2}:
+            used.update(range(g["channel"], g["channel"] + group_size(cfg, name)))
+    for ch in range(max(1, start), 513 - size + 1):
+        if not used & set(range(ch, ch + size)):
             return ch
     return None
 

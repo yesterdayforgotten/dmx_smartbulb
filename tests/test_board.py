@@ -62,3 +62,12 @@ def test_shows_on_separate_fixtures_and_take_over():
         b.stop_show()
         assert not b.runs
     asyncio.run(go())
+
+
+def test_white_is_real_on_hsic_fixtures():
+    b = Board(lambda: [("a", 1, 4), ("b", 5, 3)])
+    b.set_fixture_white([1, 5], 6500, 100)
+    assert tuple(b.values[0:4]) == (0, 0, 255, 255)        # sat 0 + cool CCT
+    assert b.values[5] > 0                                  # HSI: a pale tint (saturation above 0)
+    vals = {f["channel"]: f for f in b.patched_values()}
+    assert vals[1]["c"] == 255 and vals[1]["size"] == 4 and "c" not in vals[5]

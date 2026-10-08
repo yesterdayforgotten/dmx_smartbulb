@@ -19,6 +19,8 @@ import random
 import threading
 import time
 
+from engine.sender import WHITE_K
+
 log = logging.getLogger("board")
 
 ENTTEC_GLOB = "/dev/serial/by-id/usb-FTDI_FT232R*"
@@ -47,8 +49,9 @@ def hsv_to_dmx(h, s, v):
 
 class Board:
     def __init__(self, fixtures):
-        """fixtures: callable returning [(label, start channel)] for patched
-        addresses (solo bulbs and group channels), in channel order."""
+        """fixtures: callable returning [(label, start channel, channels)] for
+        patched addresses (solo bulbs and group channels), in channel order.
+        channels is 3 (HSI) or 4 (HSIC) and may be left out (3)."""
         self.fixtures = fixtures
         self.values = bytearray(512)
         self.port = None
@@ -139,11 +142,31 @@ class Board:
     def set_channels(self, changes):
         """changes: {channel (1-512): value (0-255)}. Shows let go of the fixtures touched."""
         changes = {int(ch): int(v) for ch, v in changes.items()}
-        self._take_over({ch - off for ch in changes for off in range(3)})
+        self._take_over({ch - off for ch in changes for off in range(4)})
         with self._lock:
             for ch, v in changes.items():
                 if 1 <= ch <= 512:
                     self.values[ch - 1] = max(0, min(255, v))
+
+    def _fixtures(self):
+        return [(f[0], f[1], f[2] if len(f) > 2 else 3) for f in self.fixtures()]
+
+    def set_fixture_white(self, channels, k, v):
+        """White at a color temperature. HSIC fixtures get real white (saturation 0
+        and the temperature channel); HSI ones only have color, so they get a pale
+        tint toward orange (warm) or blue (cool)."""
+        self._take_over(set(channels))
+        sizes = {ch: size for _, ch, size in self._fixtures()}
+        lo, hi = WHITE_K
+        cct = round(max(0, min(1, (k - lo) / (hi - lo))) * 255)
+        warm = max(0.0, min(1.0, (6500 - k) / 4000))
+        h, sat = (30, round(35 * warm)) if warm > 0.15 else (220, round(15 * (1 - warm)))
+        with self._lock:
+            for ch in channels:
+                if sizes.get(ch) == 4 and 1 <= ch <= 509:
+                    self.values[ch - 1:ch + 3] = bytes((0, 0, round(v / 100 * 255), cct))
+                elif 1 <= ch <= 510:
+                    self.values[ch - 1:ch + 2] = bytes(hsv_to_dmx(h, sat, v))
 
     def set_fixture_color(self, channels, h, s, v):
         """Write one color to each fixture's three channels."""
@@ -162,9 +185,12 @@ class Board:
 
     def patched_values(self):
         out = []
-        for label, ch in self.fixtures():
-            out.append({"label": label, "channel": ch, "h": self.values[ch - 1], "s": self.values[ch],
-                        "v": self.values[ch + 1]})
+        for label, ch, size in self._fixtures():
+            f = {"label": label, "channel": ch, "size": size, "h": self.values[ch - 1], "s": self.values[ch],
+                 "v": self.values[ch + 1]}
+            if size == 4 and ch <= 509:
+                f["c"] = self.values[ch + 2]
+            out.append(f)
         return out
 
     # ---- shows ---------------------------------------------------------------
@@ -179,7 +205,7 @@ class Board:
         return next(iter(self.runs.values()))["name"] if self.runs else None
 
     def _all_channels(self):
-        return {ch for _, ch in self.fixtures()}
+        return {ch for _, ch, _ in self._fixtures()}
 
     def _take_over(self, channels):
         """Remove fixtures from the shows running on them; stop shows left with none."""
@@ -239,7 +265,7 @@ class Board:
                 t += (now - last) * run["speed"]           # speed can change while running
                 last = now
                 mine = run["channels"]
-                fixtures = [ch for _, ch in self.fixtures() if mine is None or ch in mine]
+                fixtures = [ch for _, ch, _ in self._fixtures() if mine is None or ch in mine]
                 n = max(1, len(fixtures))
                 frame = {}
                 if name == "rainbow":

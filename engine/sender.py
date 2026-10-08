@@ -4,6 +4,8 @@ Each tick (a new DMX frame, or every 10 ms):
 
 1. Every bulb that follows DMX works out its target color from its own three
    channels (hue, saturation, brightness), with the brightness curve applied.
+   An HSIC bulb reads a fourth, color temperature: at saturation 0 it switches
+   to its white LEDs at that temperature instead of mixing white from color.
    Change tracking is per bulb, so bulbs sharing channels all update together.
 2. "DMX wins": a manual set or a recalled look holds until that bulb's DMX
    values change from what they were at the moment of the manual set. A bulb
@@ -37,7 +39,7 @@ import collections
 import math
 
 from engine import kasa
-from engine.config import bulb_channel
+from engine.config import FOOTPRINT, bulb_channel
 
 REPLY_TIMEOUT = 0.5      # s: a command not answered within this is a miss
 OFFLINE_AFTER = 5.0      # s without any reply: offline (at least 2.5 idle checks, see apply_config)
@@ -58,9 +60,21 @@ def apply_curve(raw, curve):
     return max(1, int(x * 100))
 
 
-def dmx_to_state(raw3, curve):
-    h, s, _ = kasa.scale_hsv(*raw3)
-    return ("hsv", h, s, apply_curve(raw3[2], curve))
+WHITE_K = (2500, 6500)   # color temperature channel 0..255 covers this range
+
+
+def cct_to_kelvin(byte):
+    lo, hi = WHITE_K
+    return round((lo + byte / 255 * (hi - lo)) / 10) * 10
+
+
+def dmx_to_state(raw, curve):
+    """raw: (hue, sat, bri) or, for HSIC, (hue, sat, bri, color temperature)."""
+    h, s, _ = kasa.scale_hsv(*raw[:3])
+    v = apply_curve(raw[2], curve)
+    if len(raw) == 4 and s == 0:
+        return ("temp", cct_to_kelvin(raw[3]), v)
+    return ("hsv", h, s, v)
 
 
 def change_size(a, b):
@@ -128,8 +142,9 @@ class BulbRuntime:
         self.source = "dmx"          # dmx | manual | look | loss
         self.target = None           # the state the bulb should be in
         self.sent = None             # the state last sent
-        self.raw = None              # this bulb's last DMX triple
-        self.manual_raw = None       # DMX triple when a manual set was made
+        self.raw = None              # this bulb's last DMX values (3, or 4 in HSIC)
+        self.manual_raw = None       # DMX values when a manual set was made
+        self.size = 3                # channels it reads: 3 (HSI) or 4 (HSIC)
         self.dirty_since = None      # when target last changed away from sent
         self.dmx_time = None         # frame time of the DMX change behind target
         self.last_send = -math.inf
@@ -204,6 +219,7 @@ class Sender:
             rt = old.get(mac) or BulbRuntime(mac)
             rt.ip, rt.name, rt.dmx = b["ip"], b["name"], b["dmx"]
             rt.channel = bulb_channel(cfg, mac)
+            rt.size = FOOTPRINT[b["mode"]]
             rt.interval = min(max(rt.interval, self.min_interval), self.max_interval)
             self.bulbs[mac] = rt
         self.by_ip = {rt.ip: rt for rt in self.bulbs.values() if rt.ip}
@@ -235,7 +251,7 @@ class Sender:
             if not rt.dmx or rt.channel is None:
                 continue
             c = rt.channel - 1
-            raw = (data[c], data[c + 1], data[c + 2])
+            raw = tuple(data[c:c + 4]) if rt.size == 4 and c + 4 <= len(data) else tuple(data[c:c + 3])
             rt.raw = raw
             if now < rt.hold_until:
                 continue            # identify is running
