@@ -434,10 +434,10 @@
           <label class="field"><span>Max WiFi Bandwidth:</span>
             <span class="with-unit"><input id="budget" type="number" min="1" max="5000" x-model.number="settings.sender.budget_pps"><span class="muted">commands/sec</span></span>
             <small class="muted">Each command is one network packet to one bulb. Caps the WiFi load from the whole rig.</small></label>
-          <label class="field"><span>Max updates to any one bulb</span>
+          <label class="field"><span>Max Rate per Bulb:</span>
             <span class="with-unit"><input id="mininterval" type="number" min="0.5" max="100" step="0.5"
                    :value="settings.sender.min_interval_ms ? +(1000 / settings.sender.min_interval_ms).toFixed(1) : ''"
-                   @input="$event.target.value > 0 && (settings.sender.min_interval_ms = Math.round(1000 / $event.target.value))"><span class="muted">per second</span></span>
+                   @input="$event.target.value > 0 && (settings.sender.min_interval_ms = Math.round(1000 / $event.target.value))"><span class="muted">commands/sec</span></span>
             <small class="muted" x-text="`One command every ${settings.sender.min_interval_ms} ms at most. Bulbs on firmware 1.0.15 handle 30/s.`"></small></label>
           <p class="muted small" style="margin:0; flex-basis:100%" x-text="rateSummary()"></p>
           <label class="field"><span>Maximum backoff (ms)</span><input id="maxbackoff" type="number" min="10" max="60000" x-model.number="settings.sender.max_backoff_ms"></label>
