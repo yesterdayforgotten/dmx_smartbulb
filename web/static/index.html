@@ -259,10 +259,10 @@
                   <span class="status" :class="isOnline(b.mac) ? 'on' : 'off'" x-text="isOnline(b.mac) ? (liveOf(b.mac).backoff ? 'slowed' : 'online') : 'offline'"
                         :title="liveOf(b.mac).backoff ? 'Missed several replies in a row, so updates to this bulb are spaced out (now every ' + liveOf(b.mac).interval + ' ms) until it answers again' : ''"></span>
                   <span class="muted small mono" x-show="liveOf(b.mac).rtt != null" x-text="liveOf(b.mac).rtt + ' ms'"></span>
-                  <span class="small warn-text" x-show="fwUpdatable(b.mac)" :title="fwTitle(b.mac)">⬆</span>
                 </td>
                 <td class="menu-cell">
                   <button type="button" class="btn small id-btn" @click="identify(b.mac)" :title="'Blink ' + b.name">Identify</button>
+                  <span class="fw-flag warn-text" x-show="fwUpdatable(b.mac)" :title="fwTitle(b.mac)" aria-label="Firmware update available">⬆</span>
                   <button type="button" class="kebab" @click.stop="openMenu(b, $el)" :aria-label="'More for ' + b.name" :aria-expanded="menuFor === b.mac">⋮</button>
                 </td>
               </tr>

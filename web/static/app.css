@@ -233,3 +233,4 @@ input[type=number].ch { width: 5em; }
 .selection-bar { margin-top: 6px; padding: 6px 10px; background: var(--panel-2); border: 1px solid var(--accent); border-radius: 8px; align-items: center; }
 .selection-bar.idle { visibility: hidden; }   /* keeps its space so the table doesn't jump */
 .selection-bar { flex-wrap: nowrap; overflow-x: auto; }
+.fw-flag { font-size: 13px; margin-left: 4px; cursor: help; }
