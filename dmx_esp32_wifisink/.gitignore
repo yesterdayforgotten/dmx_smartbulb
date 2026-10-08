@@ -1,2 +1,4 @@
 .pio
 src/secrets.h
+sdkconfig.esp32dev
+sdkconfig.esp32dev.old
