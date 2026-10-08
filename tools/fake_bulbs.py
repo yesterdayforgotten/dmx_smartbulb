@@ -9,9 +9,10 @@ loss and offline bulbs can be set at start and changed while running.
     python3 tools/fake_bulbs.py --count 32 --latency 5 --loss 1
     # then type commands:  offline 3 | online 3 | latency 3 50 | loss 0 | stats | quit
     python3 tools/fake_bulbs.py --count 48 --mirror 192.168.10.1
-    # --mirror forwards a same-size copy of every received packet to that host's
-    # UDP discard port, so the engine's traffic to the fake bulbs also loads the
-    # real network (Ethernet and router; not WiFi airtime).
+    # --mirror HOST[:PORT] forwards a same-size copy of every received packet to
+    # HOST (port 9, discard, by default), so the engine's traffic to the fake
+    # bulbs also loads the real network. Point it at the dmx_esp32_wifisink
+    # ESP32 (HOST:9999) to load the WiFi too; it answers each copy like a bulb.
 
 The engine reaches them with kasa_port 9999 and bulb IPs 127.0.0.10+. Tests use
 FakeBulbFleet directly.
@@ -202,13 +203,14 @@ async def main():
     ap.add_argument("--port", type=int, default=kasa.KASA_PORT)
     ap.add_argument("--latency", type=float, default=5.0, help="reply latency in ms (+-30%%)")
     ap.add_argument("--loss", type=float, default=0.0, help="percent of packets dropped")
-    ap.add_argument("--mirror", metavar="HOST", help="also send a copy of every packet to HOST:9 (discard)")
+    ap.add_argument("--mirror", metavar="HOST[:PORT]", help="also send a copy of every packet there (default port 9)")
     args = ap.parse_args()
     if args.mirror:
         import socket
         MIRROR["sock"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         MIRROR["sock"].setblocking(False)
-        MIRROR["addr"] = (args.mirror, 9)
+        host, _, port = args.mirror.partition(":")
+        MIRROR["addr"] = (host, int(port or 9))
     fleet = await FakeBulbFleet(args.count, args.base_ip, args.port, args.latency, args.loss / 100).start()
     print(f"{args.count} fake bulbs on {fleet.ips[0]}..{fleet.ips[-1]} port {args.port}", flush=True)
     print(json.dumps({b.ip: b.mac for b in fleet.bulbs[:3]}), "...", flush=True)
