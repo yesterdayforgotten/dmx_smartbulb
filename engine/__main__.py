@@ -27,9 +27,27 @@ def cmd_run(args):
     else:
         receiver = None
     targets = args.discover.split(",") if args.discover else None
+    if args.web_port:
+        cfg["web_port"] = args.web_port
     engine = Engine(store, cfg, receiver=receiver, discovery_targets=targets)
+
+    async def serve():
+        import uvicorn
+        from engine.web import create_app
+        app = create_app(engine, firmware_dir=args.firmware_dir)
+        server = uvicorn.Server(uvicorn.Config(app, host="0.0.0.0", port=cfg["web_port"],
+                                               log_level="warning", lifespan="off"))
+        eng = asyncio.create_task(engine.run())
+        web = asyncio.create_task(server.serve())
+        logging.getLogger("engine").info("web UI on port %d", cfg["web_port"])
+        done, _ = await asyncio.wait({eng, web}, return_when=asyncio.FIRST_COMPLETED)
+        engine._stopping = True
+        server.should_exit = True
+        for t in done:
+            t.result()          # surface a crash
+
     try:
-        asyncio.run(engine.run())
+        asyncio.run(serve())
     except KeyboardInterrupt:
         pass
 
@@ -102,6 +120,8 @@ def main():
     run.add_argument("--port", help="override the configured serial port")
     run.add_argument("--replay", metavar="FILE", help="play a dmx_rx_probe recording instead of reading DMX")
     run.add_argument("--discover", metavar="IPS", help="comma-separated discovery targets (default: broadcast)")
+    run.add_argument("--web-port", type=int, help="override the configured web port (e.g. 8080 when developing)")
+    run.add_argument("--firmware-dir", default="/var/lib/dmx_smartbulb/firmware")
     run.set_defaults(func=cmd_run)
 
     imp = sub.add_parser("import-django-db", help="import bulbs from the old app")

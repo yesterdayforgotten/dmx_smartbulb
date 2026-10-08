@@ -90,6 +90,7 @@ class BulbRuntime:
         self.last_reply = None
         self.replies = self.misses = self.sends = 0
         self.rtt = None              # smoothed round-trip time, s
+        self.hold_until = 0.0        # ignore DMX until then (identify)
 
     @property
     def dirty(self):
@@ -167,6 +168,8 @@ class Sender:
             c = rt.channel - 1
             raw = (data[c], data[c + 1], data[c + 2])
             rt.raw = raw
+            if now < rt.hold_until:
+                continue            # identify is running
             if rt.source in ("manual", "look"):
                 if raw == rt.manual_raw:
                     continue        # DMX hasn't moved since the manual set; keep it
@@ -177,6 +180,19 @@ class Sender:
         rt = self.bulbs[mac]
         rt.manual_raw = rt.raw
         self._set_target(rt, state, now, source)
+
+    def hold(self, mac, until):
+        """Ignore DMX for this bulb until `until` (used while identifying)."""
+        self.bulbs[mac].hold_until = until
+
+    def snapshot_states(self, macs=None):
+        """{mac: look entry} of the bulbs' current targets, for saving a look."""
+        out = {}
+        for mac, rt in self.bulbs.items():
+            if (macs is None or mac in macs) and rt.target is not None:
+                st = rt.target
+                out[mac] = {"k": st[1], "v": st[2]} if st[0] == "temp" else {"h": st[1], "s": st[2], "v": st[3]}
+        return out
 
     def apply_look(self, look, now):
         for mac, st in look.items():

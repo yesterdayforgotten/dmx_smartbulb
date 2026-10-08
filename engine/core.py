@@ -149,6 +149,121 @@ class Engine:
             self.sender.apply_config(self.cfg)
         return found
 
+    # ---- operations for the web UI ---------------------------------------------
+
+    def update_config(self, change):
+        """Apply change(cfg_copy) -> None, validate, save and apply. Raises ConfigError."""
+        import copy
+        new = copy.deepcopy(self.cfg)
+        change(new)
+        self.cfg = self.store.save(new)
+        self.sender.apply_config(self.cfg)
+        return self.cfg
+
+    def restart_receiver(self):
+        """Switch to the configured input (after a settings change)."""
+        loop = asyncio.get_running_loop()
+        try:
+            loop.remove_reader(self.receiver.wake_fd)
+        except ValueError:
+            pass
+        self.receiver.stop()
+        inp = self.cfg["input"]
+        self.receiver = Receiver(inp["backend"], inp["port"], rt_priority=50)
+        self.last_seq = 0
+        self.receiver.start()
+        loop.add_reader(self.receiver.wake_fd, self._on_wake)
+
+    def set_color(self, macs, state):
+        now = time.monotonic()
+        for mac in macs:
+            if mac in self.sender.bulbs:
+                self.sender.set_manual(mac, state, now)
+
+    def recall_look(self, name):
+        self.sender.apply_look(self.cfg["looks"][name], time.monotonic())
+
+    async def identify(self, mac, seconds=4.0):
+        """Blink a bulb (white, full/off at 2 Hz), then put it back."""
+        rt = self.sender.bulbs[mac]
+        before_target, before_source, before_raw = rt.target, rt.source, rt.manual_raw
+        end = time.monotonic() + seconds
+        self.sender.hold(mac, end + 0.5)
+        on = True
+        while time.monotonic() < end:
+            if rt.ip:
+                self.transport.send(rt.ip, kasa.temperature_state(5000, 100 if on else 1, 0))
+            on = not on
+            await asyncio.sleep(0.25)
+        rt.target, rt.source, rt.manual_raw = before_target, before_source, before_raw
+        rt.sent = None              # force the restore to be sent
+        rt.last_send = -1e9
+
+    async def find_bulbs(self):
+        """Discovery for the UI: every bulb found, marked new or known."""
+        found = await self.discover(self.discovery_targets, port=self.cfg["kasa_port"], timeout=2.0)
+        out = []
+        for ip, info in sorted(found.items()):
+            mac = kasa.sysinfo_mac(info)
+            out.append({"ip": ip, "mac": mac, "alias": info.get("alias"), "model": info.get("model"),
+                        "hw_ver": info.get("hw_ver"), "fw": info.get("sw_ver"), "rssi": info.get("rssi"),
+                        "known": mac in self.cfg["bulbs"]})
+        return out
+
+    async def set_power_on(self, macs, state):
+        """Set each bulb's power-on default; returns {mac: ok}."""
+        if state[0] == "temp":
+            cmd = kasa.preferred_state(0, 0, state[2], state[1])
+        else:
+            cmd = kasa.preferred_state(state[1], state[2], state[3], 0)
+        results = {}
+        for mac in macs:
+            rt = self.sender.bulbs.get(mac)
+            if not rt or not rt.ip:
+                results[mac] = False
+                continue
+            r = await self.transport.request(rt.ip, cmd, timeout=1.0)
+            res = (r or {}).get(kasa.LIGHTING, {}).get("set_preferred_state", {})
+            results[mac] = res.get("err_code") == 0
+        return results
+
+    async def bulb_info(self, mac):
+        rt = self.sender.bulbs.get(mac)
+        if not rt or not rt.ip:
+            return None
+        r = await self.transport.request(rt.ip, kasa.SYSINFO, timeout=1.0)
+        return r and r["system"]["get_sysinfo"]
+
+    async def update_firmware(self, mac, image_url, progress=None):
+        """Tell one bulb to download (and, on KL bulbs, flash) the image at
+        image_url, served by this Pi. Returns the bulb's new version or raises."""
+        rt = self.sender.bulbs[mac]
+        ns = "smartlife.iot.common.system"
+        r = await self.transport.request(rt.ip, {ns: {"download_firmware": {"url": image_url}}}, timeout=3.0)
+        if not r or r.get(ns, {}).get("download_firmware", {}).get("err_code") != 0:
+            raise RuntimeError(f"the bulb refused the download: {r}")
+        start = time.monotonic()
+        while time.monotonic() - start < 180:
+            await asyncio.sleep(2)
+            st = await self.transport.request(rt.ip, {ns: {"get_download_state": {}}}, timeout=2.0)
+            s = (st or {}).get(ns, {}).get("get_download_state")
+            if s and progress:
+                progress(s.get("ratio", 0), s.get("status"))
+            if s and s.get("err_code", 0) != 0:
+                raise RuntimeError(f"download failed: {s}")
+            if s and s.get("status") == 2:
+                break
+        await asyncio.sleep(15)     # flash + reboot
+        for _ in range(30):
+            found = await self.discover(self.discovery_targets, port=self.cfg["kasa_port"], timeout=2.0)
+            for ip, info in found.items():
+                if kasa.sysinfo_mac(info) == mac:
+                    if ip != rt.ip:
+                        self.update_config(lambda c: c["bulbs"][mac].update(ip=ip))
+                    return info.get("sw_ver")
+            await asyncio.sleep(2)
+        raise RuntimeError("the bulb didn't come back after flashing; it may still be rebooting")
+
     # ---- reporting ---------------------------------------------------------
 
     def status(self, now=None):
