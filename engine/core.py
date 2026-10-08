@@ -90,7 +90,7 @@ class Engine:
 
     def patched_fixtures(self):
         """[(label, start channel)] for every patched address, in channel order:
-        solo bulbs, and group channels (labelled with the group name)."""
+        solo bulbs, and group channels (labeled with the group name)."""
         seen = {}
         for name, g in self.cfg["groups"].items():
             if g["channel"] is not None:
@@ -140,7 +140,7 @@ class Engine:
         loss = self.cfg["dmx_loss"]
         if silent > max(LOSS_DETECT_S, loss["after_s"]):
             self.loss_applied = True
-            log.warning("no DMX for %.1f s; loss behaviour: %s", silent, loss["mode"])
+            log.warning("no DMX for %.1f s; loss behavior: %s", silent, loss["mode"])
             if loss["mode"] != "hold":
                 self.sender.dmx_lost(loss["mode"], now, self.cfg["looks"].get(loss["look"]))
 

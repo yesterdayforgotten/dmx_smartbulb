@@ -1,4 +1,4 @@
-/* Layout: one column on phones (tab bar at the bottom), centred column on wider
+/* Layout: one column on phones (tab bar at the bottom), centered column on wider
    screens (tab bar on top). The stage map is the Live tab's main surface. */
 :root {
   --bg: #0f1214;

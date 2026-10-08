@@ -25,13 +25,13 @@ LIVE_HZ = 10
 
 
 def to_state(d):
-    """API colour {h, s, v} or {k, v} to the sender's tuple."""
+    """API color {h, s, v} or {k, v} to the sender's tuple."""
     try:
         if "k" in d:
             return ("temp", int(d["k"]), int(d["v"]))
         return ("hsv", int(d["h"]), int(d["s"]), int(d["v"]))
     except (KeyError, TypeError, ValueError):
-        raise HTTPException(400, "colour needs h, s, v or k, v")
+        raise HTTPException(400, "color needs h, s, v or k, v")
 
 
 def from_state(st):
@@ -305,7 +305,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
             raise HTTPException(400, "give the look a name")
         snap = engine.sender.snapshot_states(set(body["macs"]) if body.get("macs") else None)
         if not snap:
-            raise HTTPException(400, "no bulb has a colour yet")
+            raise HTTPException(400, "no bulb has a color yet")
         change(lambda c: c["looks"].__setitem__(name, snap))
         return {"ok": True, "bulbs": len(snap)}
 
@@ -330,7 +330,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
 
     @app.post("/api/power-on")
     async def power_on(request: Request, body: dict = Body(...)):
-        """state: {"k", "v"} (white), {"h", "s", "v"} (colour) or {"mode": "last"}."""
+        """state: {"k", "v"} (white), {"h", "s", "v"} (color) or {"mode": "last"}."""
         need_auth(request)
         st = body.get("state") or {}
         state = ("last",) if st.get("mode") == "last" else to_state(st)
@@ -395,21 +395,21 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         engine.board.set_channels(body.get("values") or {})
         return {"ok": True}
 
-    @app.post("/api/board/colour")
-    def board_colour(request: Request, body: dict = Body(...)):
-        """Set fixtures to one colour: {channels: [...], h, s, v} or {channels, k, v}."""
+    @app.post("/api/board/color")
+    def board_color(request: Request, body: dict = Body(...)):
+        """Set fixtures to one color: {channels: [...], h, s, v} or {channels, k, v}."""
         need_auth(request)
         board_running()
         chans = [int(c) for c in body.get("channels") or []]
         if "k" in body:
-            # Approximate white at a colour temperature with low saturation
+            # Approximate white at a color temperature with low saturation
             # towards orange (warm) or blue (cool) - DMX input is hue/sat/bri.
             k = float(body["k"])
             warm = max(0.0, min(1.0, (6500 - k) / 4000))
             h, sat = (30, round(35 * warm)) if warm > 0.15 else (220, round(15 * (1 - warm)))
-            engine.board.set_fixture_colour(chans, h, sat, int(body.get("v", 100)))
+            engine.board.set_fixture_color(chans, h, sat, int(body.get("v", 100)))
         else:
-            engine.board.set_fixture_colour(chans, int(body.get("h", 0)), int(body.get("s", 0)), int(body.get("v", 0)))
+            engine.board.set_fixture_color(chans, int(body.get("h", 0)), int(body.get("s", 0)), int(body.get("v", 0)))
         return {"ok": True}
 
     @app.post("/api/board/show")

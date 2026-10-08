@@ -13,7 +13,7 @@ PORT = 19998
 
 
 def recording(tmp_path, hue=85, sat=255, val=255, n=400):
-    """A recording where channels 1-3 and 4-6 hold a fixed colour."""
+    """A recording where channels 1-3 and 4-6 hold a fixed color."""
     from tools.dmx_testpattern import encode_parmrk
     slots = bytearray(512)
     slots[0:3] = bytes([hue, sat, val])
@@ -148,7 +148,7 @@ def test_bulb_info_and_power_on_are_read(tmp_path):
     asyncio.run(go())
 
 
-def test_power_draw_colour_and_last_state_power_on(tmp_path):
+def test_power_draw_color_and_last_state_power_on(tmp_path):
     async def go():
         fleet = await FakeBulbFleet(2, port=PORT).start()
         try:

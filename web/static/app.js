@@ -30,8 +30,8 @@ function app() {
     found: null, discovering: false, newGroup: '', lookName: '',
     info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, menuPos: { x: 0, y: 0 }, groupPopup: null, groupSheet: null,
     dmxPopup: false, assign: null,
-    board: null, boardMode: 'colour', boardSel: [], boardColour: { h: 30, s: 80, v: 70 }, boardTemp: 3200,
-    boardColourMode: 'hsv', boardSpeed: 1, _boardTimers: {},
+    board: null, boardMode: 'color', boardSel: [], boardColor: { h: 30, s: 80, v: 70 }, boardTemp: 3200,
+    boardColorMode: 'hsv', boardSpeed: 1, _boardTimers: {},
     color: { h: 30, s: 80, v: 70 }, temp: 3200, mode: 'hsv', _sendTimer: null,
     powerOn: { mode: 'white', k: 2700, h: 30, s: 80, v: 80 }, pwChange: { current: '', next: '' },
     toast: null, _toastTimer: null, _drag: null,
@@ -54,6 +54,7 @@ function app() {
     },
     async start() {
       await this.loadState();
+      if (this.tab === 'board') this.setTab('board');   // reopened on the Control Board tab
       this.connect();
       this.$watch('selected', () => this.syncPowerOn());
       // Firmware, signal and power-on defaults change slowly; refresh them now
@@ -312,7 +313,7 @@ function app() {
     },
     stateText(mac) {
       const st = this.liveOf(mac).state;
-      if (!st) return 'no colour yet';
+      if (!st) return 'no color yet';
       if (st.v === 0) return 'off';
       return st.k != null ? `${st.k} K, ${st.v}%` : `hue ${st.h}°, sat ${st.s}%, ${st.v}%`;
     },
@@ -342,7 +343,7 @@ function app() {
       if (!po) return 'not read yet';
       if (po.mode === 'last') return 'last state';
       if (po.v === 0) return 'off';
-      return po.s > 0 && !po.k ? `colour: hue ${po.h}°, sat ${po.s}%, ${po.v}%` : `white ${po.k} K, ${po.v}%`;
+      return po.s > 0 && !po.k ? `color: hue ${po.h}°, sat ${po.s}%, ${po.v}%` : `white ${po.k} K, ${po.v}%`;
     },
     powerOnSummary() {
       const macs = this.targets(true);
@@ -357,7 +358,7 @@ function app() {
       const u = this.powerOnSummary().uniform;
       if (!u) return;
       if (u.mode === 'last') { this.powerOn.mode = 'last'; return; }
-      if (u.s > 0 && !u.k) Object.assign(this.powerOn, { mode: 'colour', h: u.h, s: u.s, v: u.v || this.powerOn.v });
+      if (u.s > 0 && !u.k) Object.assign(this.powerOn, { mode: 'color', h: u.h, s: u.s, v: u.v || this.powerOn.v });
       else if (u.k) Object.assign(this.powerOn, { mode: 'white', k: u.k, v: u.v || this.powerOn.v });
     },
 
@@ -464,7 +465,7 @@ function app() {
     async setPowerOn() {
       const macs = this.targets(true);
       const p = this.powerOn;
-      const state = p.mode === 'last' ? { mode: 'last' } : p.mode === 'colour' ? { h: p.h, s: p.s, v: p.v } : { k: p.k, v: p.v };
+      const state = p.mode === 'last' ? { mode: 'last' } : p.mode === 'color' ? { h: p.h, s: p.s, v: p.v } : { k: p.k, v: p.v };
       const r = await this.act(this.api('POST', '/api/power-on', { macs, state }));
       if (r) {
         const bad = Object.entries(r.results).filter(([, ok]) => !ok).length;
@@ -578,18 +579,18 @@ function app() {
     },
     boardWheelPick(ev) {
       const p = this.wheelAt(ev);
-      this.boardColourMode = 'hsv';
-      this.boardColour.h = p.h; this.boardColour.s = p.s;
-      if (this.boardColour.v === 0) this.boardColour.v = 70;
-      this.boardSendColour();
+      this.boardColorMode = 'hsv';
+      this.boardColor.h = p.h; this.boardColor.s = p.s;
+      if (this.boardColor.v === 0) this.boardColor.v = 70;
+      this.boardSendColor();
     },
-    boardSendColour() {
+    boardSendColor() {
       if (!this.boardSel.length) { this.say('Pick at least one fixture', true); return; }
-      const body = this.boardColourMode === 'temp'
-        ? { channels: this.boardSel, k: this.boardTemp, v: this.boardColour.v }
-        : { channels: this.boardSel, ...this.boardColour };
-      this.boardThrottle('colour', async () => {
-        await this.act(this.api('POST', '/api/board/colour', body));
+      const body = this.boardColorMode === 'temp'
+        ? { channels: this.boardSel, k: this.boardTemp, v: this.boardColor.v }
+        : { channels: this.boardSel, ...this.boardColor };
+      this.boardThrottle('color', async () => {
+        await this.act(this.api('POST', '/api/board/color', body));
         if (this.board) this.board.active = true;
       });
     },

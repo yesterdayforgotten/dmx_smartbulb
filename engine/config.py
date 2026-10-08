@@ -152,7 +152,7 @@ def validate(raw):
                 continue
             _num(problems, f"look {name!r} brightness", st["v"], 0, 100, integer=True)
             if "k" in st:
-                _num(problems, f"look {name!r} colour temperature", st["k"], 2500, 6500)
+                _num(problems, f"look {name!r} color temperature", st["k"], 2500, 6500)
             else:
                 _num(problems, f"look {name!r} hue", st["h"], 0, 360, integer=True)
                 _num(problems, f"look {name!r} saturation", st["s"], 0, 100, integer=True)
@@ -199,7 +199,7 @@ def validate(raw):
 
 
 def bulb_channel(cfg, mac):
-    """The first DMX channel a bulb takes its colour from, or None if unpatched."""
+    """The first DMX channel a bulb takes its color from, or None if unpatched."""
     b = cfg["bulbs"][mac]
     if b["follow"] is not None:
         return cfg["groups"][b["follow"]]["channel"]

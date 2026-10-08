@@ -1,7 +1,7 @@
 """Control Board: sends DMX out through an Enttec Open DMX USB, like a console.
 
 When an Enttec (FTDI FT232R) is plugged in, the web UI's Control Board tab can
-set channels, set a colour for chosen fixtures, or run test shows. The 512
+set channels, set a color for chosen fixtures, or run test shows. The 512
 channel values live in `values`; a background thread sends them as DMX frames
 (BREAK, MAB, start code 0 and 512 slots at 250 kbaud) about 30 times a second.
 The DMX goes out of the Enttec into the show's DMX line, back in through the
@@ -25,8 +25,8 @@ SHOWS = {
     "rainbow": "Rainbow, all together",
     "chase_rainbow": "Rainbow chase (each fixture offset)",
     "breathe": "Breathe (brightness swell)",
-    "snaps": "Colour snaps (R, G, B, white)",
-    "random": "Random colour snaps",
+    "snaps": "Color snaps (R, G, B, white)",
+    "random": "Random color snaps",
     "chase": "Chase (one at a time, channel order)",
     "flash": "Flash (all on/off)",
 }
@@ -144,8 +144,8 @@ class Board:
                 if 1 <= ch <= 512:
                     self.values[ch - 1] = max(0, min(255, v))
 
-    def set_fixture_colour(self, channels, h, s, v):
-        """Write one colour to each fixture's three channels."""
+    def set_fixture_color(self, channels, h, s, v):
+        """Write one color to each fixture's three channels."""
         self.stop_show()
         trio = hsv_to_dmx(h, s, v)
         with self._lock:
@@ -204,9 +204,9 @@ class Board:
                         frame[ch] = (0, 0, v)
                 elif name == "snaps":
                     step = int(t) % 4
-                    colour = [(0, 100, 100), (120, 100, 100), (240, 100, 100), (0, 0, 100)][step]
+                    color = [(0, 100, 100), (120, 100, 100), (240, 100, 100), (0, 0, 100)][step]
                     for ch in fixtures:
-                        frame[ch] = colour
+                        frame[ch] = color
                 elif name == "random":
                     step = int(t / 2)                                     # every 2 s at speed 1
                     if step != last_step:

@@ -13,11 +13,11 @@ def test_hsv_to_dmx_matches_engine_scaling():
         assert abs(ks - s) <= 1 and abs(kv - v) <= 1
 
 
-def test_channels_and_fixture_colour():
+def test_channels_and_fixture_color():
     b = Board(lambda: [("a", 1), ("b", 4)])
     b.set_channels({1: 10, 2: 300, 600: 5})
     assert b.values[0] == 10 and b.values[1] == 255
-    b.set_fixture_colour([4], 120, 100, 100)
+    b.set_fixture_color([4], 120, 100, 100)
     assert tuple(b.values[3:6]) == hsv_to_dmx(120, 100, 100)
     assert [f["channel"] for f in b.patched_values()] == [1, 4]
     b.blackout()

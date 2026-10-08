@@ -132,7 +132,7 @@ def power_on_from_reply(reply):
 
 
 def sysinfo_mac(info):
-    """MAC from a get_sysinfo reply, normalised to 12 upper-case hex digits.
+    """MAC from a get_sysinfo reply, normalized to 12 upper-case hex digits.
     KL bulbs report it as mic_mac; plugs and switches as mac."""
     raw = info.get("mic_mac") or info.get("mac") or ""
     mac = raw.replace(":", "").replace("-", "").upper()

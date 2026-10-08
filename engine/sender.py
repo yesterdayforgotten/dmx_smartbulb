@@ -2,7 +2,7 @@
 
 Each tick (a new DMX frame, or every 10 ms):
 
-1. Every bulb that follows DMX works out its target colour from its own three
+1. Every bulb that follows DMX works out its target color from its own three
    channels (hue, saturation, brightness), with the brightness curve applied.
    Change tracking is per bulb, so bulbs sharing channels all update together.
 2. "DMX wins": a manual set or a recalled look holds until that bulb's DMX
@@ -306,7 +306,7 @@ class Sender:
         # whose replies never came were lost.
         idx = next((i for i, (_, k, _b) in enumerate(rt.pending) if k == key), None)
         if idx is None:
-            idx = 0 if rt.pending else None     # unrecognised echo: assume the oldest
+            idx = 0 if rt.pending else None     # unrecognized echo: assume the oldest
         if idx is not None:
             lost = idx
             for _ in range(idx):

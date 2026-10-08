@@ -4,7 +4,7 @@ packets (XOR-obfuscated JSON, ~180 bytes) as if driving N bulbs at R Hz each,
 with periodic bursts.
 
 Packets go to the default gateway's discard port (UDP 9), never to bulbs (they
-would change colour) and never as broadcast (that would load the WiFi the bulbs
+would change color) and never as broadcast (that would load the WiFi the bulbs
 share).
 
     python3 tools/net_load.py                  # 30 bulbs x 20 Hz = 600 pkt/s, bursts of 3000 pkt/s

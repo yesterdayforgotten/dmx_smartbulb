@@ -278,7 +278,7 @@
         </div>
         <div class="row">
           <button class="btn small" type="button" :aria-pressed="powerOn.mode === 'white'" @click="powerOn.mode = 'white'">White</button>
-          <button class="btn small" type="button" :aria-pressed="powerOn.mode === 'colour'" @click="powerOn.mode = 'colour'">Colour</button>
+          <button class="btn small" type="button" :aria-pressed="powerOn.mode === 'color'" @click="powerOn.mode = 'color'">Color</button>
           <button class="btn small" type="button" :aria-pressed="powerOn.mode === 'last'" @click="powerOn.mode = 'last'">Last state</button>
           <span class="swatch" x-show="powerOn.mode !== 'last'" :style="cssFromState(powerOn.mode === 'white' ? {k: powerOn.k, v: powerOn.v} : {h: powerOn.h, s: powerOn.s, v: powerOn.v}, true)"></span>
         </div>
@@ -286,7 +286,7 @@
           <label class="field" style="flex:1; min-width:180px"><span x-text="'White ' + powerOn.k + ' K'"></span>
             <input id="pok" type="range" class="temp-range" min="2500" max="6500" step="50" x-model.number="powerOn.k"></label>
         </div>
-        <div class="row" x-show="powerOn.mode === 'colour'">
+        <div class="row" x-show="powerOn.mode === 'color'">
           <label class="field" style="flex:1; min-width:180px"><span x-text="'Hue ' + powerOn.h + '°'"></span>
             <input id="poh" type="range" class="hue-range" min="0" max="359" x-model.number="powerOn.h"></label>
           <label class="field" style="flex:1; min-width:140px"><span x-text="'Saturation ' + powerOn.s + '%'"></span>
@@ -312,10 +312,10 @@
         <button class="btn small" type="button" @click="boardRelease()" :disabled="!(board && board.active)" title="Stop sending, so a real desk can take over">Release</button>
       </div>
       <p class="muted" style="margin:0 0 12px">Sends real DMX out of the Enttec, so it travels the whole chain (shield, receiver, engine, bulbs) just like a desk.
-        Bulbs follow it only if their DMX toggle is on; a manual colour holds until the DMX changes.</p>
+        Bulbs follow it only if their DMX toggle is on; a manual color holds until the DMX changes.</p>
 
       <div class="row" style="margin-bottom:12px">
-        <button class="btn small" type="button" :aria-pressed="boardMode === 'colour'" @click="boardMode = 'colour'; $nextTick(() => drawWheel($refs.boardwheel))">Colour</button>
+        <button class="btn small" type="button" :aria-pressed="boardMode === 'color'" @click="boardMode = 'color'; $nextTick(() => drawWheel($refs.boardwheel))">Color</button>
         <button class="btn small" type="button" :aria-pressed="boardMode === 'faders'" @click="boardMode = 'faders'">Faders</button>
         <button class="btn small" type="button" :aria-pressed="boardMode === 'shows'" @click="boardMode = 'shows'">Test shows</button>
       </div>
@@ -324,14 +324,14 @@
         <div class="warn-box">No patched fixtures yet. Give bulbs a channel (Solo) or a group a shared channel on the Bulbs tab.</div>
       </template>
 
-      <!-- Colour mode -->
-      <div x-show="boardMode === 'colour'" class="control">
+      <!-- Color mode -->
+      <div x-show="boardMode === 'color'" class="control">
         <div class="stack">
-          <canvas class="wheel" width="520" height="520" x-ref="boardwheel" @pointerdown="boardWheelPick($event)" @pointermove="$event.buttons && boardWheelPick($event)"></canvas>
-          <label class="field"><span x-text="'Brightness ' + boardColour.v + '%'"></span>
-            <input id="bbright" type="range" min="0" max="100" x-model.number="boardColour.v" @input="boardSendColour()"></label>
+          <canvas class="wheel" width="520" height="520" x-ref="boardwheel" x-init="$nextTick(() => drawWheel($el))" @pointerdown="boardWheelPick($event)" @pointermove="$event.buttons && boardWheelPick($event)"></canvas>
+          <label class="field"><span x-text="'Brightness ' + boardColor.v + '%'"></span>
+            <input id="bbright" type="range" min="0" max="100" x-model.number="boardColor.v" @input="boardSendColor()"></label>
           <label class="field"><span x-text="'White ' + boardTemp + ' K'"></span>
-            <input id="btemp" type="range" class="temp-range" min="2500" max="6500" step="50" x-model.number="boardTemp" @input="boardColourMode = 'temp'; boardSendColour()"></label>
+            <input id="btemp" type="range" class="temp-range" min="2500" max="6500" step="50" x-model.number="boardTemp" @input="boardColorMode = 'temp'; boardSendColor()"></label>
         </div>
         <div class="stack">
           <div class="row">
@@ -410,14 +410,14 @@
             <input id="fixedtr" type="number" min="0" max="10000" step="5" x-model.number="settings.sender.fixed_transition_ms" :disabled="settings.sender.adaptive_transition"></label>
           <label class="switch"><input id="adaptive" type="checkbox" x-model="settings.sender.adaptive_transition"> Smooth fades (experimental)</label>
           <label class="field" x-show="settings.sender.adaptive_transition"><span>Snap above (0–1 change)</span><input id="snap" type="number" min="0" max="1" step="0.05" x-model.number="settings.sender.snap_threshold"></label>
-          <p class="muted" style="margin:0; flex-basis:100%">Each bulb blends to every new colour over the fade time (the old app used 30 ms). Smooth fades instead stretch each blend over the time until the next update; smoother, but the bulb lags a little.</p>
+          <p class="muted" style="margin:0; flex-basis:100%">Each bulb blends to every new color over the fade time (the old app used 30 ms). Smooth fades instead stretch each blend over the time until the next update; smoother, but the bulb lags a little.</p>
           <label class="field"><span>Brightness curve</span>
             <select id="curve" x-model="settings.sender.curve"><option value="linear">Linear</option><option value="square">Square law</option><option value="scurve">S-curve</option></select></label>
         </section>
 
         <h2>When DMX stops</h2>
         <section class="card row">
-          <label class="field"><span>Behaviour</span>
+          <label class="field"><span>Behavior</span>
             <select id="lossmode" x-model="settings.dmx_loss.mode"><option value="hold">Hold the last look</option><option value="look">Recall a look</option><option value="blackout">Blackout</option></select></label>
           <label class="field" x-show="settings.dmx_loss.mode !== 'hold'"><span>After (s)</span><input id="lossafter" type="number" min="1" max="3600" x-model.number="settings.dmx_loss.after_s"></label>
           <label class="field" x-show="settings.dmx_loss.mode === 'look'"><span>Look</span>
@@ -596,7 +596,7 @@
         <div class="row">
           <button class="btn" type="button" @click="sheet ? identify(sheet) : groupMembers(groupSheet).forEach(m => identify(m))"
                   x-text="sheet ? 'Identify' : 'Identify all'"></button>
-          <span class="muted small">A manual colour holds until the bulb's DMX changes ("DMX wins").</span>
+          <span class="muted small">A manual color holds until the bulb's DMX changes ("DMX wins").</span>
         </div>
       </div>
     </div>
