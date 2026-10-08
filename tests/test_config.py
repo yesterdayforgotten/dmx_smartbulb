@@ -68,7 +68,7 @@ def test_patch_conflicts():
                               C: {"ip": "10.0.0.3", "follow": "G", "name": "c"},
                               "50C7BF000004": {"ip": "10.0.0.4", "follow": "G", "name": "d"}}})
     w = patch_conflicts(cfg)
-    assert w == ["channel 3 is used by a, b"]       # c and d share group G on purpose
+    assert w == ["Overlap: channel 3 is used by a, b"]   # c and d share group G on purpose
 
 
 def test_next_free_channel():
@@ -140,3 +140,10 @@ def test_firmware_manifest_is_consistent():
     imgs = firmware.load_manifest()
     assert imgs and all(len(i["sha256"]) == 64 and i["size"] > 0 and i["url"].startswith("http") for i in imgs)
     assert len({(i["model"], i["hw_ver"]) for i in imgs}) == len(imgs)   # one image per model/hw
+
+
+
+def test_following_a_group_without_a_channel_is_flagged():
+    cfg = validate({"groups": {"G": {"channel": None}},
+                    "bulbs": {A: {"ip": "10.0.0.1", "follow": "G", "name": "a"}}})
+    assert patch_conflicts(cfg) == ["a follows group G, which has no channel, so it gets no DMX"]

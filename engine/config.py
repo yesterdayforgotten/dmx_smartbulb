@@ -222,7 +222,10 @@ def patch_conflicts(cfg):
         owners = tuple(sorted(users[c]))
         if len(owners) > 1 and owners not in seen:
             seen.add(owners)
-            warnings.append(f"channel {c} is used by {', '.join(owners)}")
+            warnings.append(f"Overlap: channel {c} is used by {', '.join(owners)}")
+    for mac, b in cfg["bulbs"].items():
+        if b["follow"] and cfg["groups"].get(b["follow"], {}).get("channel") is None:
+            warnings.append(f"{b['name'] or mac} follows group {b['follow']}, which has no channel, so it gets no DMX")
     return warnings
 
 

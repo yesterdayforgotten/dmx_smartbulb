@@ -169,7 +169,7 @@
     <!-- ================= BULBS ================= -->
     <div x-show="tab === 'bulbs'">
       <div class="stack" x-show="warnings.length" style="margin-bottom:10px">
-        <template x-for="w in warnings"><div class="warn-box" x-text="'Overlap: ' + w"></div></template>
+        <template x-for="w in warnings"><div class="warn-box" x-text="w"></div></template>
       </div>
 
       <div class="toolbar">
