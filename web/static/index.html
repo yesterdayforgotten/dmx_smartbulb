@@ -390,17 +390,38 @@
 
       <!-- Test shows -->
       <div x-show="boardMode === 'shows'" class="stack">
+        <div class="row">
+          <label class="field" style="max-width:260px"><span>Run on</span>
+            <select id="bshowtarget" x-model="boardShowTarget" @change="boardRunOn(boardShowTarget) && (boardSpeed = boardRunOn(boardShowTarget).speed)">
+              <option value="all">All fixtures</option>
+              <template x-for="[g, n] in Object.entries(board ? board.groups : {})" :key="g">
+                <option :value="g" :disabled="!n" x-text="`Group ${g} (${n} fixture${n === 1 ? '' : 's'})`"></option>
+              </template>
+            </select></label>
+          <label class="field" style="flex:1; min-width:180px; max-width:320px"><span x-text="'Speed ×' + boardSpeed"></span>
+            <input id="bspeed" type="range" min="0.25" max="4" step="0.25" x-model.number="boardSpeed"
+                   @change="boardRunOn(boardShowTarget) && boardShow(boardRunOn(boardShowTarget).name)"></label>
+        </div>
         <div class="show-grid">
           <template x-for="sh in (board ? board.shows : [])" :key="sh.id">
-            <button class="btn" type="button" :aria-pressed="board && board.show === sh.id" @click="boardShow(sh.id)" x-text="sh.label"></button>
+            <button class="btn" type="button" :aria-pressed="!!(boardRunOn(boardShowTarget) && boardRunOn(boardShowTarget).name === sh.id)"
+                    @click="boardShow(sh.id)" x-text="sh.label"></button>
           </template>
         </div>
-        <label class="field" style="max-width:420px"><span x-text="'Speed ×' + boardSpeed"></span>
-          <input id="bspeed" type="range" min="0.25" max="4" step="0.25" x-model.number="boardSpeed" @change="board && board.show && boardShow(board.show)"></label>
-        <div class="row">
-          <button class="btn" type="button" @click="boardStopShow()" :disabled="!(board && board.show)">Stop show</button>
-          <span class="muted" x-text="board && board.show ? 'Running: ' + board.shows.find(x => x.id === board.show).label : 'No show running'"></span>
+        <div class="stack" style="gap:6px">
+          <div class="row"><strong>Running</strong><span style="flex:1"></span>
+            <button class="btn small" type="button" @click="boardStopShow()" :disabled="!(board && board.runs.length)">Stop all</button></div>
+          <p class="muted small" style="margin:0" x-show="!(board && board.runs.length)">No show running.</p>
+          <template x-for="r in (board ? board.runs : [])" :key="r.id">
+            <div class="row nowrap run-row">
+              <span x-text="r.label"></span>
+              <span class="muted small" x-text="(r.target === 'all' ? 'all fixtures' : 'group ' + r.target) + ' · ' + r.fixtures + ' fixture' + (r.fixtures === 1 ? '' : 's') + ' · ×' + r.speed"></span>
+              <span style="flex:1"></span>
+              <button class="btn small" type="button" @click="boardStopShow(r.id)">Stop</button>
+            </div>
+          </template>
         </div>
+        <p class="muted small" style="margin:0">Starting a show on a group takes its fixtures from any other show; moving a fader or picking a color takes over just those fixtures.</p>
         <p class="muted small" style="margin:0">Tip: watch the header's "spread" while a show runs to see how in sync the bulbs are.</p>
       </div>
     </div>

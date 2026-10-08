@@ -39,3 +39,26 @@ def test_every_show_writes_values():
             b.stop_show()
             assert b.show is None
     asyncio.run(go())
+
+
+def test_shows_on_separate_fixtures_and_take_over():
+    async def go():
+        b = Board(lambda: [("a", 1), ("b", 4), ("c", 7), ("d", 10)])
+        b.start_show("rainbow")                                   # all four
+        b.start_show("flash", speed=2, target="G", channels=[7, 10])
+        st = {r["target"]: r for r in b.status()["runs"]}
+        assert st["all"]["fixtures"] == 2 and st["G"]["fixtures"] == 2 and st["G"]["speed"] == 2
+        rid = st["G"]["id"]
+        assert b.start_show("flash", speed=3, target="G", channels=[7, 10]) == rid   # speed only
+        assert b.runs[rid]["speed"] == 3
+        b.set_fixture_color([1], 0, 0, 50)                         # takes fixture a from rainbow
+        assert b.runs[st["all"]["id"]]["channels"] == {4}
+        b.set_channels({5: 0})                                     # fixture b: rainbow has nothing left
+        assert [r["target"] for r in b.status()["runs"]] == ["G"]
+        await asyncio.sleep(0.1)
+        assert tuple(b.values[0:3]) == hsv_to_dmx(0, 0, 50)        # no show overwrote it
+        b.start_show("breathe")                                    # all again: replaces everything
+        assert [r["target"] for r in b.status()["runs"]] == ["all"]
+        b.stop_show()
+        assert not b.runs
+    asyncio.run(go())

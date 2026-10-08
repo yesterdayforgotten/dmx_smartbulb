@@ -100,6 +100,16 @@ class Engine:
                 seen.setdefault(b["channel"], b["name"] or "bulb")
         return sorted(((label, ch) for ch, label in seen.items()), key=lambda x: x[1])
 
+    def group_fixtures(self, name):
+        """Start channels of a group's fixtures: its shared channel, plus members on
+        their own (Solo) channels."""
+        g = self.cfg["groups"][name]
+        chans = {g["channel"]} if g["channel"] is not None else set()
+        for b in self.cfg["bulbs"].values():
+            if name in b["groups"] and b["channel"] is not None and not b["follow"]:
+                chans.add(b["channel"])
+        return sorted(chans)
+
     def stop(self):
         self._stopping = True
         try:

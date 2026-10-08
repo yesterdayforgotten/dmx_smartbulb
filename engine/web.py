@@ -380,7 +380,8 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
     @app.get("/api/board")
     async def board_state(request: Request):
         need_auth(request)
-        return {**engine.board.status(), "fixtures": engine.board.patched_values()}
+        groups = {name: len(engine.group_fixtures(name)) for name in engine.cfg["groups"]}
+        return {**engine.board.status(), "fixtures": engine.board.patched_values(), "groups": groups}
 
     def board_running():
         try:
@@ -416,16 +417,25 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
     async def board_show(request: Request, body: dict = Body(...)):
         need_auth(request)
         board_running()
+        target = body.get("target") or "all"
+        channels = None
+        if target != "all":
+            if target not in engine.cfg["groups"]:
+                raise HTTPException(400, f"no group {target!r}")
+            channels = engine.group_fixtures(target)
+            if not channels:
+                raise HTTPException(400, f"group {target} has no patched fixtures")
         try:
-            engine.board.start_show(body.get("name"), body.get("speed", 1.0))
+            rid = engine.board.start_show(body.get("name"), body.get("speed", 1.0), target, channels)
         except ValueError as e:
             raise HTTPException(400, str(e))
-        return {"ok": True}
+        return {"ok": True, "id": rid}
 
     @app.post("/api/board/stop-show")
-    async def board_stop_show(request: Request):
+    async def board_stop_show(request: Request, body: dict = Body(default={})):
+        """Stop one show ({id}) or all of them."""
         need_auth(request)
-        engine.board.stop_show()
+        engine.board.stop_show(body.get("id"))
         return {"ok": True}
 
     @app.post("/api/board/blackout")

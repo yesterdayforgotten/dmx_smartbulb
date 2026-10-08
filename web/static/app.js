@@ -31,7 +31,7 @@ function app() {
     info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, menuPos: { x: 0, y: 0 }, groupPopup: null, groupSheet: null,
     dmxPopup: false, assign: null, delayPop: false,
     board: null, boardMode: 'color', boardSel: [], boardColor: { h: 30, s: 80, v: 70 }, boardTemp: 3200,
-    boardColorMode: 'hsv', boardSpeed: 1, _boardTimers: {},
+    boardColorMode: 'hsv', boardSpeed: 1, boardShowTarget: 'all', _boardTimers: {},
     color: { h: 30, s: 80, v: 70 }, temp: 3200, mode: 'hsv', _sendTimer: null,
     powerOn: { mode: 'white', k: 2700, h: 30, s: 80, v: 80 }, pwChange: { current: '', next: '' },
     toast: null, _toastTimer: null, _drag: null,
@@ -629,11 +629,15 @@ function app() {
         if (this.board) this.board.active = true;
       });
     },
+    boardRunOn(target) { return this.board ? this.board.runs.find((r) => r.target === target) : null; },
     async boardShow(name) {
-      await this.act(this.api('POST', '/api/board/show', { name, speed: this.boardSpeed }));
+      await this.act(this.api('POST', '/api/board/show', { name, speed: this.boardSpeed, target: this.boardShowTarget }));
       await this.loadBoard();
     },
-    async boardStopShow() { await this.act(this.api('POST', '/api/board/stop-show')); await this.loadBoard(); },
+    async boardStopShow(id) {
+      await this.act(this.api('POST', '/api/board/stop-show', id ? { id } : {}));
+      await this.loadBoard();
+    },
     async boardBlackout() { await this.act(this.api('POST', '/api/board/blackout'), 'Blackout'); await this.loadBoard(); },
     async boardRelease() { await this.act(this.api('POST', '/api/board/release'), 'Released: no longer sending DMX'); await this.loadBoard(); },
 

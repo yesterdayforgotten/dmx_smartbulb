@@ -247,9 +247,28 @@ def test_board_show_starts_from_the_api(tmp_path, monkeypatch):
             monkeypatch.setattr(h.engine.board, "start", lambda: None)
             r = await h.client.post("/api/board/show", json={"name": "rainbow", "speed": 2})
             assert r.status_code == 200, r.text
-            assert h.engine.board.show == "rainbow" and h.engine.board.speed == 2
+            rid = r.json()["id"]
+            assert h.engine.board.show == "rainbow" and h.engine.board.runs[rid]["speed"] == 2
             r = await h.client.post("/api/board/show", json={"name": "rainbow", "speed": 3})
-            assert r.status_code == 200 and h.engine.board.speed == 3
+            assert r.status_code == 200 and h.engine.board.runs[rid]["speed"] == 3
             assert (await h.client.post("/api/board/stop-show")).status_code == 200
             assert h.engine.board.show is None
+    run(go())
+
+
+def test_board_show_on_a_group(tmp_path, monkeypatch):
+    async def go():
+        async with Harness(tmp_path) as h:
+            await h.login()
+            monkeypatch.setattr(h.engine.board, "start", lambda: None)
+            mac = list(h.engine.cfg["bulbs"])[1]
+            await h.client.put("/api/groups/Left", json={"channel": None})
+            await h.client.patch(f"/api/bulbs/{mac}", json={"groups": ["Left"]})
+            assert (await h.client.get("/api/board")).json()["groups"] == {"Left": 1}
+            r = await h.client.post("/api/board/show", json={"name": "chase", "target": "Left"})
+            assert r.status_code == 200, r.text
+            assert h.engine.board.runs[r.json()["id"]]["channels"] == {4}
+            assert (await h.client.post("/api/board/show", json={"name": "chase", "target": "Nope"})).status_code == 400
+            assert (await h.client.post("/api/board/stop-show", json={"id": r.json()["id"]})).status_code == 200
+            assert not h.engine.board.runs
     run(go())

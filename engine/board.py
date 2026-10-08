@@ -53,13 +53,12 @@ class Board:
         self.values = bytearray(512)
         self.port = None
         self.active = False           # sending frames
-        self.show = None              # name of the running show
-        self.speed = 1.0
+        self.runs = {}                # running shows by id (see start_show)
+        self._run_seq = 0
         self.frames = 0
         self.error = None
         self._thread = None
         self._stop = threading.Event()
-        self._show_task = None
         self._lock = threading.Lock()
 
     # ---- output ---------------------------------------------------------
@@ -138,17 +137,17 @@ class Board:
     # ---- values ---------------------------------------------------------------
 
     def set_channels(self, changes):
-        """changes: {channel (1-512): value (0-255)}."""
-        self.stop_show()
+        """changes: {channel (1-512): value (0-255)}. Shows let go of the fixtures touched."""
+        changes = {int(ch): int(v) for ch, v in changes.items()}
+        self._take_over({ch - off for ch in changes for off in range(3)})
         with self._lock:
             for ch, v in changes.items():
-                ch, v = int(ch), int(v)
                 if 1 <= ch <= 512:
                     self.values[ch - 1] = max(0, min(255, v))
 
     def set_fixture_color(self, channels, h, s, v):
         """Write one color to each fixture's three channels."""
-        self.stop_show()
+        self._take_over(set(channels))
         trio = hsv_to_dmx(h, s, v)
         with self._lock:
             for ch in channels:
@@ -170,28 +169,77 @@ class Board:
 
     # ---- shows ---------------------------------------------------------------
 
-    def start_show(self, name, speed=1.0):
+    # Several shows can run at once, each on its own fixtures (all of them, or a
+    # group's). A run is {"id", "name", "speed", "target", "channels", "task"};
+    # channels None means every patched fixture.
+
+    @property
+    def show(self):
+        """The first running show's name (or None)."""
+        return next(iter(self.runs.values()))["name"] if self.runs else None
+
+    def _all_channels(self):
+        return {ch for _, ch in self.fixtures()}
+
+    def _take_over(self, channels):
+        """Remove fixtures from the shows running on them; stop shows left with none."""
+        if not channels:
+            return
+        for rid, run in list(self.runs.items()):
+            have = self._all_channels() if run["channels"] is None else run["channels"]
+            left = have - set(channels)
+            if left == have:
+                continue
+            if left:
+                run["channels"] = left
+            else:
+                self.stop_show(rid)
+
+    def start_show(self, name, speed=1.0, target="all", channels=None):
+        """Run a show on `channels` (None: all fixtures), labeled `target`. Starting
+        the same show on the same target only changes its speed."""
         if name not in SHOWS:
             raise ValueError(f"unknown show {name!r}")
-        self.stop_show()
-        self.show, self.speed = name, max(0.1, min(10.0, float(speed)))
-        self._show_task = asyncio.get_running_loop().create_task(self._run_show(name))
+        speed = max(0.1, min(10.0, float(speed)))
+        for run in self.runs.values():
+            if run["target"] == target and run["name"] == name:
+                run["speed"] = speed
+                return run["id"]
+        if channels is None:
+            self.stop_show()
+        else:
+            channels = set(channels)
+            self._take_over(channels)
+        for rid, run in list(self.runs.items()):
+            if run["target"] == target:
+                self.stop_show(rid)
+        self._run_seq += 1
+        rid = self._run_seq
+        run = {"id": rid, "name": name, "speed": speed, "target": target, "channels": channels}
+        run["task"] = asyncio.get_running_loop().create_task(self._run_show(run))
+        self.runs[rid] = run
+        return rid
 
-    def stop_show(self):
-        if self._show_task and not self._show_task.done():
-            self._show_task.cancel()
-        self._show_task = None
-        self.show = None
+    def stop_show(self, run_id=None):
+        """Stop one show, or all of them."""
+        for rid in ([run_id] if run_id is not None else list(self.runs)):
+            run = self.runs.pop(rid, None)
+            if run and not run["task"].done():
+                run["task"].cancel()
 
-    async def _run_show(self, name):
+    async def _run_show(self, run):
+        name = run["name"]
         rng = random.Random()
-        t0 = time.monotonic()
+        t, last = 0.0, time.monotonic()
         last_step = -1
         randoms = {}
         try:
             while True:
-                t = (time.monotonic() - t0) * self.speed
-                fixtures = [ch for _, ch in self.fixtures()]
+                now = time.monotonic()
+                t += (now - last) * run["speed"]           # speed can change while running
+                last = now
+                mine = run["channels"]
+                fixtures = [ch for _, ch in self.fixtures() if mine is None or ch in mine]
                 n = max(1, len(fixtures))
                 frame = {}
                 if name == "rainbow":
@@ -232,6 +280,10 @@ class Board:
             pass
 
     def status(self):
+        runs = [{"id": r["id"], "name": r["name"], "label": SHOWS[r["name"]], "speed": r["speed"],
+                 "target": r["target"],
+                 "fixtures": len(self._all_channels() if r["channels"] is None else r["channels"])}
+                for r in self.runs.values()]
         return {"available": self.available(), "active": self.active, "port": self.port, "show": self.show,
-                "speed": self.speed, "frames": self.frames, "error": self.error,
+                "runs": runs, "frames": self.frames, "error": self.error,
                 "shows": [{"id": k, "label": v} for k, v in SHOWS.items()]}

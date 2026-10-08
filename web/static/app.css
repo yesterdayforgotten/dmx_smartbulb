@@ -221,3 +221,4 @@ input[type=number].ch { width: 5em; }
 .hist-bar { height: 10px; background: var(--panel); border-radius: 3px; overflow: hidden; }
 .hist-bar > span { display: block; height: 100%; background: var(--ok); }
 .hist-bar > span.slow { background: var(--warn); }
+.run-row { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; gap: 8px; }
