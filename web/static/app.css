@@ -135,3 +135,31 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .progress > div { height: 100%; background: var(--accent); }
 
 @media (prefers-reduced-motion: no-preference) { .bulb .lamp { transition: background-color .12s, box-shadow .12s; } }
+
+/* ---- bulbs page (compact) ---- */
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.toolbar input[type=search] { flex: 1 1 220px; }
+.bulbs-table th, .bulbs-table td { padding: 5px 6px; }
+.bulbs-table .name-cell { min-width: 9em; }
+.lamp-btn { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #000; cursor: pointer; padding: 0; display: block; }
+.lamp-btn.off { opacity: .35; border: 2px dashed var(--bad); }
+.link { background: none; border: 0; padding: 0; color: var(--fg); cursor: pointer; text-align: left; font-weight: 600; }
+.link:hover { color: var(--accent); }
+.small { font-size: 12px; }
+.nowrap { flex-wrap: nowrap; }
+input[type=number].ch { width: 5em; }
+.warn-text { color: var(--warn); }
+.status-cell { white-space: nowrap; }
+.menu-cell { position: relative; text-align: right; }
+.kebab { background: none; border: 1px solid transparent; border-radius: 6px; color: var(--muted); font-size: 20px; line-height: 1; width: 34px; height: 34px; cursor: pointer; }
+.kebab:hover, .kebab[aria-expanded="true"] { border-color: var(--line); color: var(--fg); }
+.menu { position: absolute; right: 0; top: 38px; z-index: 10; min-width: 210px; background: var(--panel-2); border: 1px solid var(--line);
+        border-radius: 10px; padding: 6px; display: grid; gap: 2px; box-shadow: 0 8px 24px rgba(0,0,0,.4); text-align: left; }
+.menu button { background: none; border: 0; text-align: left; padding: 8px 10px; border-radius: 6px; cursor: pointer; color: var(--fg); }
+.menu button:hover { background: var(--panel); }
+.menu button.danger { color: var(--bad); }
+.menu-info { padding: 6px 10px; font-size: 13px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 2px 0; }
+.field.inline { grid-auto-flow: column; align-items: center; gap: 8px; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 14px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }

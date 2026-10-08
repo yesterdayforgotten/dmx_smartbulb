@@ -151,19 +151,31 @@
 
     <!-- ================= BULBS ================= -->
     <div x-show="tab === 'bulbs'">
-      <div class="stack" x-show="warnings.length" style="margin-bottom:12px">
+      <div class="stack" x-show="warnings.length" style="margin-bottom:10px">
         <template x-for="w in warnings"><div class="warn-box" x-text="'Overlap: ' + w"></div></template>
       </div>
 
-      <div class="row">
-        <button class="btn primary" type="button" @click="discover()" :disabled="discovering" x-text="discovering ? 'Searching…' : 'Find bulbs'"></button>
-        <button class="btn" type="button" x-show="selected.length" @click="autoAssign()" x-text="`Auto-assign ${selected.length} from channel…`"></button>
-        <span class="muted" x-text="'Next free channel: ' + (nextFree || 'none')"></span>
+      <div class="toolbar">
+        <input type="search" id="bulbsearch" placeholder="Search name, IP, MAC or channel" x-model="bulbFilter" aria-label="Search bulbs">
+        <select id="groupfilter" x-model="bulbGroupFilter" aria-label="Filter by group">
+          <option value="">All groups</option>
+          <template x-for="g in Object.keys(cfg.groups)"><option :value="g" x-text="g"></option></template>
+          <option value="__none">No group</option>
+        </select>
+        <select id="statusfilter" x-model="bulbStatusFilter" aria-label="Filter by status">
+          <option value="">Any status</option>
+          <option value="offline">Offline</option>
+          <option value="update">Firmware update available</option>
+          <option value="manual">Manual / look</option>
+        </select>
+        <button class="btn small primary" type="button" @click="discover()" :disabled="discovering" x-text="discovering ? 'Searching…' : 'Find bulbs'"></button>
+        <button class="btn small" type="button" x-show="selected.length" @click="autoAssign()" x-text="`Auto-assign ${selected.length} from ${nextFree || '?'}`"></button>
       </div>
 
       <template x-if="found">
-        <section class="card" style="margin-top:12px">
-          <p style="margin:0 0 8px" x-text="newFound().length ? newFound().length + ' new bulb(s) found' : 'No new bulbs found (' + found.length + ' known bulbs answered).'"></p>
+        <section class="card" style="margin-top:10px">
+          <div class="row"><span x-text="newFound().length ? newFound().length + ' new bulb(s) found' : 'No new bulbs found (' + found.length + ' known bulbs answered).'"></span>
+            <span style="flex:1"></span><button class="btn small" type="button" @click="found = null">Close</button></div>
           <template x-for="f in newFound()" :key="f.mac">
             <div class="row" style="padding:6px 0; border-top:1px solid var(--line)">
               <span x-text="f.alias"></span><span class="muted mono" x-text="f.ip + ' · ' + f.model + ' · fw ' + (f.fw || '').split(' ')[0]"></span>
@@ -174,54 +186,64 @@
         </section>
       </template>
 
-      <h2>Patch</h2>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th><input type="checkbox" aria-label="Select all" @change="selected = $event.target.checked ? bulbList().map(b => b.mac) : []"></th>
-            <th>Name</th><th>Channel</th><th>DMX</th><th>Groups</th><th>IP / fw</th><th></th></tr></thead>
+      <div class="table-wrap" style="margin-top:10px">
+        <table class="bulbs-table">
+          <thead><tr>
+            <th><input type="checkbox" aria-label="Select all shown" :checked="filteredBulbs().length && filteredBulbs().every(b => selected.includes(b.mac))"
+                       @change="selectShown($event.target.checked)"></th>
+            <th></th><th>Name</th><th>Patch</th><th>DMX</th><th>Groups</th><th>Status</th><th></th>
+          </tr></thead>
           <tbody>
-            <template x-for="b in bulbList()" :key="b.mac">
+            <template x-for="b in filteredBulbs()" :key="b.mac">
               <tr>
                 <td><input type="checkbox" :checked="selected.includes(b.mac)" @change="toggleSelect(b.mac)" :aria-label="'Select ' + b.name"></td>
-                <td><input type="text" :id="'name-' + b.mac" :value="b.name" @change="editBulb(b.mac, {name: $event.target.value})"></td>
+                <td><button type="button" class="lamp-btn" :class="!isOnline(b.mac) && 'off'" :style="lampStyle(b.mac, true)"
+                            @click="openSheet(b.mac)" :aria-label="'Details for ' + b.name" :title="stateText(b.mac)"></button></td>
+                <td class="name-cell"><button type="button" class="link" @click="openSheet(b.mac)" x-text="b.name"></button>
+                  <div class="muted mono small" x-text="b.ip || 'no IP'"></div></td>
                 <td>
-                  <div class="row" style="flex-wrap:nowrap">
-                    <select :id="'patch-' + b.mac" @change="setPatchMode(b, $event.target.value)">
-                      <option value="own" :selected="!b.follow">Own</option>
-                      <template x-for="g in Object.keys(cfg.groups)"><option :value="'g:' + g" :selected="b.follow === g" x-text="'Follow ' + g"></option></template>
+                  <div class="row nowrap">
+                    <select :id="'patch-' + b.mac" @change="setPatchMode(b, $event.target.value)" aria-label="Patch">
+                      <option value="own" :selected="!b.follow && b.channel != null">Solo</option>
+                      <template x-for="g in Object.keys(cfg.groups)"><option :value="'g:' + g" :selected="b.follow === g" x-text="'Group: ' + g"></option></template>
                       <option value="none" :selected="!b.follow && b.channel == null">Unpatched</option>
                     </select>
-                    <input type="number" min="1" max="510" :id="'ch-' + b.mac" x-show="!b.follow" :value="b.channel ?? ''"
-                           @change="editBulb(b.mac, {channel: $event.target.value === '' ? null : +$event.target.value})">
+                    <input type="number" class="ch" min="1" max="510" :id="'ch-' + b.mac" x-show="!b.follow && b.channel != null" :value="b.channel ?? ''"
+                           @change="editBulb(b.mac, {channel: $event.target.value === '' ? null : +$event.target.value})" aria-label="Start channel">
+                    <span class="muted mono small" x-show="b.follow" x-text="b.follow && cfg.groups[b.follow] && cfg.groups[b.follow].channel ? 'ch ' + cfg.groups[b.follow].channel : 'no ch'"></span>
                   </div>
                 </td>
                 <td><label class="switch"><input type="checkbox" :checked="b.dmx" @change="editBulb(b.mac, {dmx: $event.target.checked})" :aria-label="'DMX for ' + b.name"></label></td>
-                <td>
-                  <div class="row">
-                    <template x-for="g in Object.keys(cfg.groups)">
-                      <button type="button" class="chip" :aria-pressed="b.groups.includes(g)" @click="toggleGroup(b, g)" x-text="g"></button>
-                    </template>
+                <td><button type="button" class="chip" @click="groupPopup = b.mac" x-text="b.groups.length ? b.groups.length + (b.groups.length === 1 ? ' group' : ' groups') : 'None'"
+                            :title="b.groups.join(', ')"></button></td>
+                <td class="status-cell">
+                  <span class="status" :class="isOnline(b.mac) ? 'on' : 'off'" x-text="isOnline(b.mac) ? (liveOf(b.mac).backoff ? 'slowed' : 'online') : 'offline'"></span>
+                  <span class="muted small mono" x-show="liveOf(b.mac).rtt != null" x-text="liveOf(b.mac).rtt + ' ms'"></span>
+                  <div class="small mono" :class="fwUpdatable(b.mac) ? 'warn-text' : 'muted'" x-text="fwText(b.mac)"></div>
+                </td>
+                <td class="menu-cell">
+                  <button type="button" class="kebab" @click="menuFor = menuFor === b.mac ? null : b.mac" :aria-label="'More for ' + b.name" :aria-expanded="menuFor === b.mac">⋮</button>
+                  <div class="menu" x-show="menuFor === b.mac" x-cloak @click.outside="menuFor = null">
+                    <button type="button" @click="menuFor = null; identify(b.mac)">Identify</button>
+                    <div class="menu-info"><span class="muted">Power-on default</span><br><span x-text="powerOnText(b.mac)"></span></div>
+                    <button type="button" x-show="fwImages.length" @click="menuFor = null; updateFirmware(b.mac)"
+                            x-text="fwUpdatable(b.mac) ? 'Update firmware' : 'Re-install firmware'"></button>
+                    <button type="button" class="danger" @click="menuFor = null; removeBulb(b)">Remove</button>
                   </div>
                 </td>
-                <td class="mono"><span x-text="b.ip || '—'"></span>
-                  <template x-if="fwJob(b.mac)"><div class="muted" x-text="fwJob(b.mac).message + (fwJob(b.mac).state === 'running' ? ' (' + fwJob(b.mac).ratio + '%)' : '')"></div></template></td>
-                <td><div class="row" style="flex-wrap:nowrap">
-                  <button class="btn small" type="button" @click="identify(b.mac)">Identify</button>
-                  <button class="btn small" type="button" x-show="fwImages.length" @click="updateFirmware(b.mac)">Firmware</button>
-                  <button class="btn small danger" type="button" @click="removeBulb(b)">Remove</button>
-                </div></td>
               </tr>
             </template>
           </tbody>
         </table>
       </div>
+      <p class="muted small" x-text="`Showing ${filteredBulbs().length} of ${bulbList().length} bulbs` + (selected.length ? ` · ${selected.length} selected` : '')"></p>
 
       <h2>Groups</h2>
       <section class="card stack">
         <template x-for="name in Object.keys(cfg.groups)" :key="name">
           <div class="row">
             <strong x-text="name" style="min-width:8em"></strong>
-            <label class="field" style="grid-auto-flow:column; align-items:center"><span>Shared channel</span>
+            <label class="field inline"><span>Shared channel</span>
               <input type="number" min="1" max="510" :value="cfg.groups[name].channel ?? ''" @change="putGroup(name, $event.target.value === '' ? null : +$event.target.value)"></label>
             <span class="muted" x-text="bulbList().filter(b => b.groups.includes(name)).length + ' bulbs'"></span>
             <button class="btn small" type="button" @click="selectGroup(name)">Select</button>
@@ -236,10 +258,13 @@
 
       <h2>Power-on default</h2>
       <section class="card stack">
-        <p class="muted" style="margin:0">What each bulb shows when power is switched on, before this Pi has started. Applies to the selected bulbs, or all if none are selected.</p>
+        <p class="muted" style="margin:0">What a bulb shows when its power is switched on, before this Pi has started.</p>
         <div class="row">
-          <label class="field"><span>White (K)</span><input type="number" min="2500" max="6500" step="100" x-model.number="powerOn.k"></label>
-          <label class="field"><span>Brightness %</span><input type="number" min="1" max="100" x-model.number="powerOn.v"></label>
+          <span x-text="'Applies to ' + (selected.length ? selected.length + ' selected' : 'all ' + bulbList().length) + ' bulb(s) · current: ' + powerOnSummary().text"></span>
+        </div>
+        <div class="row">
+          <label class="field"><span>White (K)</span><input id="pok" type="number" min="2500" max="6500" step="100" x-model.number="powerOn.k"></label>
+          <label class="field"><span>Brightness %</span><input id="pov" type="number" min="1" max="100" x-model.number="powerOn.v"></label>
           <button class="btn" type="button" @click="setPowerOn()" x-text="`Apply to ${targets(true).length} bulb(s)`"></button>
         </div>
       </section>
@@ -326,6 +351,12 @@
             <select id="losslook" x-model="settings.dmx_loss.look"><template x-for="n in Object.keys(cfg.looks)"><option :value="n" x-text="n"></option></template></select></label>
         </section>
 
+        <h2>Identify</h2>
+        <section class="card row">
+          <label class="field"><span>Blinks per second</span><input id="identhz" type="number" min="0.2" max="10" step="0.1" x-model.number="settings.identify.blink_hz"></label>
+          <label class="field"><span>Duration (s)</span><input id="identdur" type="number" min="0.5" max="60" step="0.5" x-model.number="settings.identify.duration_s"></label>
+        </section>
+
         <h2>Show network</h2>
         <section class="card row">
           <label class="field"><span>Network name</span><input id="netssid" type="text" x-model="settings.network.ssid"></label>
@@ -358,6 +389,25 @@
     </div>
   </main>
 
+  <!-- ================= group picker ================= -->
+  <template x-if="groupPopup && cfg.bulbs[groupPopup]">
+    <div class="backdrop" @click.self="groupPopup = null">
+      <div class="sheet stack" role="dialog" aria-modal="true" :aria-label="'Groups for ' + cfg.bulbs[groupPopup].name">
+        <div class="row"><strong x-text="'Groups for ' + cfg.bulbs[groupPopup].name"></strong><span style="flex:1"></span>
+          <button class="btn small" type="button" @click="groupPopup = null">Done</button></div>
+        <p class="muted" style="margin:0" x-show="!Object.keys(cfg.groups).length">No groups yet. Add one below.</p>
+        <template x-for="g in Object.keys(cfg.groups)" :key="g">
+          <label class="switch"><input type="checkbox" :checked="cfg.bulbs[groupPopup].groups.includes(g)"
+                 @change="toggleGroup({mac: groupPopup, groups: cfg.bulbs[groupPopup].groups}, g)"> <span x-text="g"></span></label>
+        </template>
+        <form class="row" @submit.prevent="addGroup(groupPopup)">
+          <input id="newgroup2" type="text" placeholder="New group" x-model="newGroup">
+          <button class="btn small" type="submit">Add and assign</button>
+        </form>
+      </div>
+    </div>
+  </template>
+
   <!-- ================= bulb sheet ================= -->
   <template x-if="sheet && cfg.bulbs[sheet]">
     <div class="backdrop" @click.self="sheet = null">
@@ -372,8 +422,21 @@
         <div class="row muted" style="font-size:14px">
           <span x-text="isOnline(sheet) ? 'Online' : 'Offline'"></span>·
           <span x-text="sourceLabel(sheet)"></span>·
-          <span x-text="cfg.bulbs[sheet].ip || 'no IP'"></span>
+          <span x-text="stateText(sheet)"></span>
         </div>
+        <label class="field"><span>Name</span>
+          <input id="sheetname" type="text" :value="cfg.bulbs[sheet].name" @change="editBulb(sheet, {name: $event.target.value})"></label>
+        <dl class="facts">
+          <dt>IP</dt><dd class="mono" x-text="cfg.bulbs[sheet].ip || '—'"></dd>
+          <dt>MAC</dt><dd class="mono" x-text="sheet"></dd>
+          <dt>Model</dt><dd x-text="(info[sheet] && info[sheet].model) || '—'"></dd>
+          <dt>Firmware</dt><dd x-text="fwText(sheet)"></dd>
+          <dt>Signal</dt><dd x-text="info[sheet] && info[sheet].rssi != null ? info[sheet].rssi + ' dBm' : '—'"></dd>
+          <dt>Round trip</dt><dd x-text="liveOf(sheet).rtt != null ? liveOf(sheet).rtt + ' ms' : '—'"></dd>
+          <dt>Power-on</dt><dd x-text="powerOnText(sheet)"></dd>
+          <dt>Groups</dt><dd><button type="button" class="chip" @click="groupPopup = sheet"
+               x-text="cfg.bulbs[sheet].groups.length ? cfg.bulbs[sheet].groups.join(', ') : 'None'"></button></dd>
+        </dl>
         <label class="switch"><input type="checkbox" :checked="cfg.bulbs[sheet].dmx" @change="editBulb(sheet, {dmx: $event.target.checked})"> Follows DMX</label>
         <label class="field"><span x-text="'Brightness ' + color.v + '%'"></span>
           <input type="range" min="0" max="100" x-model.number="color.v" @input="sendColor()"></label>

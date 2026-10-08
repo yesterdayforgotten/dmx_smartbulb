@@ -28,6 +28,7 @@ function app() {
     live: null, fps: 0, _frames: null, _framesT: 0, ws: null, _wsRetry: 1000,
     view: 'map', selectMode: false, selected: [], editLayout: false, sheet: null,
     found: null, discovering: false, newGroup: '', lookName: '',
+    info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, groupPopup: null,
     color: { h: 30, s: 80, v: 70 }, temp: 3200, mode: 'hsv', _sendTimer: null,
     powerOn: { k: 2700, v: 80 }, pwChange: { current: '', next: '' },
     toast: null, _toastTimer: null, _drag: null,
@@ -51,6 +52,14 @@ function app() {
       await this.loadState();
       this.connect();
       this.$nextTick(() => this.drawWheel());
+      this.$watch('selected', () => this.syncPowerOn());
+      // Firmware, signal and power-on defaults change slowly; refresh them now
+      // and then while the Bulbs tab is open (not on Setup, so edits survive).
+      if (!this._infoTimer) {
+        this._infoTimer = setInterval(() => {
+          if (this.session.authenticated && this.tab === 'bulbs' && !this.menuFor && !this.groupPopup) this.loadState();
+        }, 30000);
+      }
     },
     async doSetup() {
       this.loginError = '';
@@ -110,11 +119,12 @@ function app() {
     async loadState() {
       const s = await this.api('GET', '/api/state');
       this.cfg = s.config; this.warnings = s.warnings; this.nextFree = s.next_free_channel;
-      this.fwImages = s.firmware_images; this.live = s.live;
+      this.fwImages = s.firmware_images; this.live = s.live; this.info = s.info || {};
       // The DMX input is set up on the Pi (config file / setup script), not here.
       this.settings = JSON.parse(JSON.stringify({
-        sender: s.config.sender, dmx_loss: s.config.dmx_loss, network: s.config.network,
+        sender: s.config.sender, dmx_loss: s.config.dmx_loss, network: s.config.network, identify: s.config.identify,
       }));
+      this.syncPowerOn();
     },
     connect() {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -230,7 +240,66 @@ function app() {
       el.addEventListener('pointerup', up);
     },
 
-    // ---------- bulbs tab ----------
+    // ---------- bulbs tab: list, status, firmware, power-on ----------
+    filteredBulbs() {
+      const q = this.bulbFilter.trim().toLowerCase();
+      return this.bulbList().filter((b) => {
+        if (q) {
+          const hay = [b.name, b.ip || '', b.mac, b.mac.match(/../g).join(':'), b.channel != null ? String(b.channel) : '',
+            b.follow || '', ...b.groups].join(' ').toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        if (this.bulbGroupFilter === '__none' && b.groups.length) return false;
+        if (this.bulbGroupFilter && this.bulbGroupFilter !== '__none' && !b.groups.includes(this.bulbGroupFilter)) return false;
+        if (this.bulbStatusFilter === 'offline' && this.isOnline(b.mac)) return false;
+        if (this.bulbStatusFilter === 'update' && !this.fwUpdatable(b.mac)) return false;
+        if (this.bulbStatusFilter === 'manual' && !['manual', 'look'].includes(this.liveOf(b.mac).source)) return false;
+        return true;
+      });
+    },
+    selectShown(on) {
+      const shown = this.filteredBulbs().map((b) => b.mac);
+      this.selected = on ? [...new Set([...this.selected, ...shown])] : this.selected.filter((m) => !shown.includes(m));
+    },
+    stateText(mac) {
+      const st = this.liveOf(mac).state;
+      if (!st) return 'no colour yet';
+      if (st.v === 0) return 'off';
+      return st.k != null ? `${st.k} K, ${st.v}%` : `hue ${st.h}°, sat ${st.s}%, ${st.v}%`;
+    },
+    fwText(mac) {
+      const fw = this.info[mac] && this.info[mac].fw;
+      return fw ? 'fw ' + fw.split(' ')[0] + (this.fwUpdatable(mac) ? ' (update available)' : '') : 'fw ?';
+    },
+    fwUpdatable(mac) {
+      const inf = this.info[mac];
+      if (!inf || !inf.fw) return false;
+      const img = this.fwImages.find((i) => i.model === inf.model && i.hw_ver === inf.hw_ver);
+      return !!img && img.version.split(' ')[0] !== inf.fw.split(' ')[0];
+    },
+    powerOnOf(mac) { return this.info[mac] && this.info[mac].power_on; },
+    powerOnText(mac) { return this.describePowerOn(this.powerOnOf(mac)); },
+    describePowerOn(po) {
+      if (!po) return 'not read yet';
+      if (po.mode === 'last') return 'last state';
+      if (po.v === 0) return 'off';
+      return po.s > 0 && !po.k ? `colour: hue ${po.h}°, sat ${po.s}%, ${po.v}%` : `white ${po.k} K, ${po.v}%`;
+    },
+    powerOnSummary() {
+      const macs = this.targets(true);
+      const vals = macs.map((m) => this.powerOnOf(m));
+      if (!vals.length || vals.some((v) => !v)) return { text: vals.some((v) => v) ? 'not read for every bulb yet' : 'not read yet', uniform: null };
+      const first = JSON.stringify(vals[0]);
+      if (vals.every((v) => JSON.stringify(v) === first)) return { text: this.describePowerOn(vals[0]) + (macs.length > 1 ? ' (all the same)' : ''), uniform: vals[0] };
+      return { text: 'mixed', uniform: null };
+    },
+    syncPowerOn() {
+      // When every targeted bulb has the same white power-on default, show it in the controls.
+      const u = this.powerOnSummary().uniform;
+      if (u && u.mode === 'preset' && u.k) { this.powerOn.k = u.k; this.powerOn.v = u.v; }
+    },
+
+    // ---------- bulbs tab: actions ----------
     async discover() {
       this.discovering = true;
       const r = await this.act(this.api('POST', '/api/discover'));
@@ -257,7 +326,7 @@ function app() {
       return this.editBulb(b.mac, { groups });
     },
     async removeBulb(b) {
-      if (this._confirmRemove !== b.mac) { this._confirmRemove = b.mac; this.say(`Press Remove again to remove ${b.name}`); return; }
+      if (this._confirmRemove !== b.mac) { this._confirmRemove = b.mac; this.say(`Choose Remove again to remove ${b.name}`); return; }
       this._confirmRemove = null;
       await this.act(this.api('DELETE', `/api/bulbs/${b.mac}`), `Removed ${b.name}`);
       this.selected = this.selected.filter((m) => m !== b.mac);
@@ -269,11 +338,14 @@ function app() {
       await this.loadState();
     },
     async identify(mac) { await this.act(this.api('POST', `/api/bulbs/${mac}/identify`), 'Blinking…'); },
-    async addGroup() {
+    async addGroup(assignTo) {
       const name = this.newGroup.trim();
       if (!name) return;
       await this.act(this.api('PUT', `/api/groups/${encodeURIComponent(name)}`, { channel: null }));
       this.newGroup = '';
+      if (assignTo && this.cfg.bulbs[assignTo]) {
+        await this.act(this.api('PATCH', `/api/bulbs/${assignTo}`, { groups: [...this.cfg.bulbs[assignTo].groups, name] }));
+      }
       await this.loadState();
     },
     async putGroup(name, channel) {
@@ -294,7 +366,7 @@ function app() {
     },
     fwJob(mac) { return this.live && this.live.firmware && this.live.firmware[mac]; },
     async updateFirmware(mac) {
-      if (this._confirmFw !== mac) { this._confirmFw = mac; this.say('Press Firmware again to update this bulb (it goes dark for about a minute)'); return; }
+      if (this._confirmFw !== mac) { this._confirmFw = mac; this.say('Choose Update firmware again to confirm (the bulb goes dark for about a minute)'); return; }
       this._confirmFw = null;
       await this.act(this.api('POST', `/api/bulbs/${mac}/firmware`, {}), 'Updating firmware…');
     },
