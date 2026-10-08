@@ -29,7 +29,7 @@ function app() {
     view: 'map', selectMode: false, selected: [], editLayout: false, sheet: null,
     found: null, discovering: false, newGroup: '', lookName: '',
     info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, menuPos: { x: 0, y: 0 }, groupPopup: null, groupSheet: null,
-    dmxPopup: false, assign: null, delayPop: false,
+    dmxPopup: false, assign: null, delayPop: false, bulkGroups: false,
     board: null, boardMode: 'color', boardSel: [], boardColor: { h: 30, s: 80, v: 70 }, boardTemp: 3200,
     boardColorMode: 'hsv', boardSpeed: 1, boardShowTarget: 'all', _boardTimers: {},
     color: { h: 30, s: 80, v: 70 }, temp: 3200, mode: 'hsv', _sendTimer: null,
@@ -414,6 +414,7 @@ function app() {
         ['WiFi signal', i.rssi != null ? i.rssi + ' dBm' : '–'],
         ['Power', i.power_mw != null ? (i.power_mw / 1000).toFixed(1) + ' W' : '–'],
         ['IP', (this.cfg.bulbs[mac] || {}).ip || '–'],
+        ['Firmware', ((i.fw || '?').split(' ')[0]) + (this.fwUpdatable(mac) ? ' ⬆' : ''), this.fwUpdatable(mac) ? 'warn-text' : '', this.fwTitle(mac)],
       ];
       return out;
     },
@@ -473,6 +474,31 @@ function app() {
       await this.loadState();
     },
     async identify(mac) { await this.act(this.api('POST', `/api/bulbs/${mac}/identify`), 'Blinking…'); },
+    bulkGroupCount(g) { return this.selected.filter((m) => this.cfg.bulbs[m] && this.cfg.bulbs[m].groups.includes(g)).length; },
+    bulkGroupState(g) {
+      const n = this.bulkGroupCount(g);
+      return n === 0 ? 'none' : n === this.selected.length ? 'all' : 'some';
+    },
+    async setBulkGroup(g, on) {
+      const todo = this.selected.filter((m) => this.cfg.bulbs[m] && on !== this.cfg.bulbs[m].groups.includes(g));
+      // One at a time: each edit is a read-modify-write of the config.
+      const run = async () => {
+        for (const m of todo) {
+          const cur = this.cfg.bulbs[m].groups;
+          await this.api('PATCH', `/api/bulbs/${m}`, { groups: on ? [...cur, g] : cur.filter((x) => x !== g) });
+        }
+      };
+      await this.act(run(), `${on ? 'Added' : 'Removed'} ${todo.length} bulb${todo.length === 1 ? '' : 's'} ${on ? 'to' : 'from'} ${g}`);
+      await this.loadState();
+    },
+    async addBulkGroup() {
+      const name = this.newGroup.trim();
+      if (!name) return;
+      if (!this.cfg.groups[name]) await this.act(this.api('PUT', `/api/groups/${encodeURIComponent(name)}`, { channel: null }));
+      this.newGroup = '';
+      await this.loadState();
+      await this.setBulkGroup(name, true);
+    },
     async addGroup(assignTo) {
       const name = this.newGroup.trim();
       if (!name) return;

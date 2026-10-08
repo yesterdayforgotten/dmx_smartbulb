@@ -9,7 +9,7 @@
 <script src="app.js"></script>
 <script defer src="vendor/alpine.min.js"></script>
 </head>
-<body x-data="app()" x-init="init()" @keydown.escape.window="closeSheet(); groupPopup = null; menuFor = null; dmxPopup = false; assign = null">
+<body x-data="app()" x-init="init()" @keydown.escape.window="closeSheet(); groupPopup = null; menuFor = null; dmxPopup = false; assign = null; bulkGroups = false">
 
 <!-- ================= first run / login ================= -->
 <template x-if="loaded && !session.authenticated">
@@ -202,6 +202,8 @@
           <option value="manual">Manual / look</option>
         </select>
         <button class="btn small primary" type="button" @click="discover()" :disabled="discovering" x-text="discovering ? 'Searching…' : 'Find bulbs'"></button>
+        <button class="btn small" type="button" x-show="selected.length" @click="bulkGroups = true"
+                x-text="`Groups for ${selected.length} selected…`"></button>
         <button class="btn small" type="button" x-show="selected.length" @click="openAssign()"
                 x-text="`Assign channels to ${selected.length} bulb${selected.length === 1 ? '' : 's'}…`"></button>
       </div>
@@ -254,7 +256,7 @@
                   <span class="status" :class="isOnline(b.mac) ? 'on' : 'off'" x-text="isOnline(b.mac) ? (liveOf(b.mac).backoff ? 'slowed' : 'online') : 'offline'"
                         :title="liveOf(b.mac).backoff ? 'Missed several replies in a row, so updates to this bulb are spaced out (now every ' + liveOf(b.mac).interval + ' ms) until it answers again' : ''"></span>
                   <span class="muted small mono" x-show="liveOf(b.mac).rtt != null" x-text="liveOf(b.mac).rtt + ' ms'"></span>
-                  <span class="small mono" :class="fwUpdatable(b.mac) ? 'warn-text' : 'muted'" :title="fwTitle(b.mac)" x-text="fwText(b.mac)"></span>
+                  <span class="small warn-text" x-show="fwUpdatable(b.mac)" :title="fwTitle(b.mac)">⬆</span>
                 </td>
                 <td class="menu-cell">
                   <button type="button" class="btn small id-btn" @click="identify(b.mac)" :title="'Blink ' + b.name">Identify</button>
@@ -543,8 +545,8 @@
     <div class="menu" :style="`left:${menuPos.x}px; top:${menuPos.y}px`" @click.outside="menuFor = null"
          @scroll.window="menuFor = null" @resize.window="menuFor = null">
       <div class="menu-info stats">
-        <template x-for="[k, v] in bulbStats(menuFor)" :key="k">
-          <div class="stat"><span class="muted" x-text="k"></span><span class="mono" x-text="v"></span></div>
+        <template x-for="row in bulbStats(menuFor)" :key="row[0]">
+          <div class="stat"><span class="muted" x-text="row[0]"></span><span class="mono" :class="row[2] || ''" :title="row[3] || ''" x-text="row[1]"></span></div>
         </template>
       </div>
       <div class="menu-info"><span class="muted">Power-on default</span><br><span x-text="powerOnText(menuFor)"></span></div>
@@ -572,6 +574,28 @@
         </div>
         <div class="row"><button class="btn primary" type="button" @click="autoAssign()" :disabled="assignPreview().some(r => !r.ch)"
                  x-text="`Assign ${selected.length} bulb${selected.length === 1 ? '' : 's'}`"></button></div>
+      </div>
+    </div>
+  </template>
+
+  <!-- ================= groups for the selected bulbs ================= -->
+  <template x-if="bulkGroups && selected.length">
+    <div class="backdrop" @click.self="bulkGroups = false">
+      <div class="sheet stack" role="dialog" aria-modal="true" aria-label="Groups for the selected bulbs">
+        <div class="row"><strong x-text="`Groups for ${selected.length} selected bulb${selected.length === 1 ? '' : 's'}`"></strong>
+          <span style="flex:1"></span><button class="btn small" type="button" @click="bulkGroups = false">Done</button></div>
+        <p class="muted small" style="margin:0">Tick to add all of them to a group, untick to take all of them out.
+          A part-ticked box means only some are in it.</p>
+        <p class="muted" style="margin:0" x-show="!Object.keys(cfg.groups).length">No groups yet. Add one below.</p>
+        <template x-for="g in Object.keys(cfg.groups)" :key="g">
+          <label class="switch"><input type="checkbox" :checked="bulkGroupState(g) === 'all'" :indeterminate="bulkGroupState(g) === 'some'"
+                 @change="setBulkGroup(g, $event.target.checked)">
+            <span x-text="g"></span><span class="muted small" x-text="bulkGroupCount(g) + ' of ' + selected.length"></span></label>
+        </template>
+        <form class="row" @submit.prevent="addBulkGroup()">
+          <input id="newgroup3" type="text" placeholder="New group" x-model="newGroup">
+          <button class="btn small" type="submit">Create and add all</button>
+        </form>
       </div>
     </div>
   </template>
