@@ -321,7 +321,13 @@ function app() {
     },
     fwText(mac) {
       const fw = this.info[mac] && this.info[mac].fw;
-      return fw ? 'fw ' + fw.split(' ')[0] + (this.fwUpdatable(mac) ? ' (update available)' : '') : 'fw ?';
+      return fw ? 'fw ' + fw.split(' ')[0] : 'fw ?';
+    },
+    fwTitle(mac) {
+      if (!this.fwUpdatable(mac)) return '';
+      const inf = this.info[mac];
+      const img = this.fwImages.find((i) => i.model === inf.model && i.hw_ver === inf.hw_ver);
+      return `Update available: ${img.version.split(' ')[0]} (⋮ menu → Update firmware)`;
     },
     fwUpdatable(mac) {
       const inf = this.info[mac];

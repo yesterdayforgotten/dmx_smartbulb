@@ -254,7 +254,7 @@
                   <span class="status" :class="isOnline(b.mac) ? 'on' : 'off'" x-text="isOnline(b.mac) ? (liveOf(b.mac).backoff ? 'slowed' : 'online') : 'offline'"
                         :title="liveOf(b.mac).backoff ? 'Missed several replies in a row, so updates to this bulb are spaced out (now every ' + liveOf(b.mac).interval + ' ms) until it answers again' : ''"></span>
                   <span class="muted small mono" x-show="liveOf(b.mac).rtt != null" x-text="liveOf(b.mac).rtt + ' ms'"></span>
-                  <span class="small mono" :class="fwUpdatable(b.mac) ? 'warn-text' : 'muted'" x-text="fwText(b.mac)"></span>
+                  <span class="small mono" :class="fwUpdatable(b.mac) ? 'warn-text' : 'muted'" :title="fwTitle(b.mac)" x-text="fwText(b.mac)"></span>
                 </td>
                 <td class="menu-cell">
                   <button type="button" class="btn small id-btn" @click="identify(b.mac)" :title="'Blink ' + b.name">Identify</button>
@@ -620,7 +620,7 @@
               <dt>IP</dt><dd class="mono" x-text="cfg.bulbs[sheet].ip || '—'"></dd>
               <dt>MAC</dt><dd class="mono" x-text="sheet"></dd>
               <dt>Model</dt><dd x-text="(info[sheet] && info[sheet].model) || '—'"></dd>
-              <dt>Firmware</dt><dd x-text="fwText(sheet)"></dd>
+              <dt>Firmware</dt><dd :class="fwUpdatable(sheet) && 'warn-text'" :title="fwTitle(sheet)" x-text="fwText(sheet)"></dd>
               <dt>Signal</dt><dd x-text="info[sheet] && info[sheet].rssi != null ? info[sheet].rssi + ' dBm' : '—'"></dd>
               <dt>Round trip</dt><dd x-text="liveOf(sheet).rtt != null ? liveOf(sheet).rtt + ' ms' : '—'"></dd>
               <dt>Power-on</dt><dd x-text="powerOnText(sheet)"></dd>
