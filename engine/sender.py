@@ -166,6 +166,10 @@ class Sender:
         self.last_tick = None
         self.stats = {"sent": 0, "refreshes": 0, "budget_waits": 0}
         self.latency = collections.deque(maxlen=500)   # DMX frame -> packet sent, s
+        # The same, once per DMX frame rather than per bulb: in sync mode every bulb a
+        # frame changed goes out in one round with the same delay.
+        self.change_latency = collections.deque(maxlen=500)
+        self._last_change_frame = None
         self.queued = collections.deque(maxlen=500)    # change -> packet sent, s
         self.delivery_spread = collections.deque(maxlen=500)  # per DMX frame: first -> last bulb sent, s
         self.reply_spread = collections.deque(maxlen=500)     # per burst: first -> last reply, s
@@ -360,6 +364,9 @@ class Sender:
         if not refresh or rt.target != rt.sent:
             if rt.dmx_time is not None:
                 self.latency.append(now - rt.dmx_time)
+                if rt.dmx_time != self._last_change_frame:
+                    self._last_change_frame = rt.dmx_time
+                    self.change_latency.append(now - rt.dmx_time)
                 rt.dmx_time = None
             if rt.dirty_since is not None:
                 self.queued.append(now - rt.dirty_since)

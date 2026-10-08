@@ -192,3 +192,17 @@ def test_latency_histogram_buckets():
     counts = histogram([0.005, 0.010, 0.049, 0.050, 0.3, 2.0])
     assert counts[0] == 1 and counts[1] == 1 and counts[3] == 1 and counts[4] == 1
     assert counts[8] == 1 and counts[-1] == 1 and sum(counts) == 6
+
+
+def test_change_latency_counts_each_frame_once():
+    from engine.sender import Sender
+    from engine.config import validate
+    bulbs = {f"AA00000000{i:02X}": {"name": f"b{i}", "ip": f"10.0.0.{i + 1}", "channel": 1 + 3 * i} for i in range(5)}
+    sent = []
+    s = Sender(validate({"bulbs": bulbs}), send=lambda ip, cmd: sent.append(ip) or True)
+    data = bytearray(512)
+    for i in range(5):
+        data[3 * i:3 * i + 3] = b"\x10\x80\xff"
+    s.update_dmx(bytes(data), 1.0, 1.0)
+    s.tick(1.05)
+    assert len(s.latency) == 5 and len(s.change_latency) == 1

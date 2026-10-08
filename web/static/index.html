@@ -51,8 +51,8 @@
                   x-text="'delay ' + (live ? live.sender.latency_p95_ms : '') + ' ms'"></button>
           <div class="hist-pop" x-show="delayPop" x-cloak role="tooltip">
             <strong>DMX change → command sent</strong>
-            <p class="muted small">Over the last <span x-text="delayHist().total"></span> commands.
-              The pill shows the 95th percentile: 95% were this fast or faster.</p>
+            <p class="muted small">Last <span x-text="delayHist().total"></span> DMX changes, each counted once however many bulbs it changed.
+              The pill shows the 95th percentile of commands: 95% went out this fast or faster.</p>
             <template x-for="b in delayHist().rows" :key="b.label">
               <div class="hist-row"><span class="mono small" x-text="b.label"></span>
                 <span class="hist-bar"><span :style="`width:${b.pct}%`" :class="b.slow ? 'slow' : ''"></span></span>
