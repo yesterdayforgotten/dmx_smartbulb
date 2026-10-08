@@ -150,7 +150,7 @@ class Engine:
             now = time.monotonic()
             self._poll_quiet_bulbs(now)
             offline = [rt for rt in self.sender.bulbs.values()
-                       if rt.ip and rt.sends and not rt.online(now)
+                       if rt.ip and rt.sends and not rt.online(now, self.sender.offline_after)
                        and (rt.last_reply is None or now - rt.last_reply > REDISCOVER_AFTER_S)]
             if offline and now - self._last_discovery >= REDISCOVER_EVERY_S:
                 self._last_discovery = now

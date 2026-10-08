@@ -387,3 +387,14 @@ def test_poll_mismatch_triggers_restore():
     s.on_reply("10.0.0.2", {LIGHT: {"get_light_state": {"on_off": 1, "hue": 180 if sat == 0 else h, "saturation": sat,
                                                         "brightness": v, "color_temp": 0, "err_code": 0}}}, 1.0)
     assert b.confirmed
+
+
+
+def test_one_lost_idle_check_does_not_flag_offline():
+    s, _ = make(idle_check_s=3.0)
+    a = s.bulbs[A]
+    s.on_reply("10.0.0.1", {LIGHT: {"get_light_state": {"on_off": 1, "hue": 0, "saturation": 0,
+                                                        "brightness": 50, "color_temp": 2700}}}, 0.0)
+    # The check at 3 s is lost; at 6.5 s (just before the next one answers) it's still online.
+    assert s.bulb_status(6.5)[A]["online"]
+    assert not s.bulb_status(8.0)[A]["online"]       # two checks missed: offline

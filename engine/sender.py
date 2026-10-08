@@ -40,7 +40,7 @@ from engine import kasa
 from engine.config import bulb_channel
 
 REPLY_TIMEOUT = 0.5      # s: a command not answered within this is a miss
-OFFLINE_AFTER = 5.0      # s without any reply while commands are going out
+OFFLINE_AFTER = 5.0      # s without any reply: offline (at least 2.5 idle checks, see apply_config)
 BURST_S = 0.05           # the budget may be spent this far ahead (token bucket depth)
 AGE_WEIGHT = 10.0        # priority added per second a change has waited (100 ms ~ a full change)
 
@@ -148,10 +148,10 @@ class BulbRuntime:
     def dirty(self):
         return self.target is not None and self.target != self.sent
 
-    def online(self, now):
+    def online(self, now, after=None):
         if self.last_reply is None:
             return False
-        return now - self.last_reply < OFFLINE_AFTER
+        return now - self.last_reply < (after or OFFLINE_AFTER)
 
     def backed_off(self, min_interval):
         return self.interval > min_interval * 1.01
@@ -191,6 +191,9 @@ class Sender:
         self.curve = s["curve"]
         self.mode = s["mode"]
         self.backoff_after = s["backoff_after"]
+        # Idle bulbs only answer the periodic status check, so one lost reply
+        # must not flag them offline: allow a couple of missed checks.
+        self.offline_after = max(OFFLINE_AFTER, 2.5 * s["idle_check_s"])
         old = self.bulbs
         self.bulbs = {}
         for mac, b in cfg["bulbs"].items():
@@ -475,7 +478,7 @@ class Sender:
         for mac, rt in self.bulbs.items():
             out[mac] = {
                 "name": rt.name, "ip": rt.ip, "channel": rt.channel, "dmx": rt.dmx,
-                "source": rt.source, "state": rt.target, "online": rt.online(now),
+                "source": rt.source, "state": rt.target, "online": rt.online(now, self.offline_after),
                 "rtt_ms": None if rt.rtt is None else round(rt.rtt * 1000, 1),
                 "reply_rate": round(rt.replies / rt.sends, 3) if rt.sends else None,
                 "interval_ms": round(rt.interval * 1000), "backoff": rt.backed_off(self.min_interval),
