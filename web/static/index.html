@@ -361,10 +361,14 @@
             <button class="chip" type="button" @click="boardSel = board ? board.fixtures.map(f => f.channel) : []">All</button>
             <button class="chip" type="button" @click="boardSel = []">None</button>
           </div>
-          <div class="fixture-list">
+          <div class="fixture-grid">
             <template x-for="f in (board ? board.fixtures : [])" :key="f.channel">
-              <label class="switch"><input type="checkbox" :checked="boardSel.includes(f.channel)" @change="toggleBoardSel(f.channel)">
-                <span x-text="f.label"></span><span class="muted mono small" x-text="'ch ' + f.channel"></span></label>
+              <button type="button" class="fixture-tile" :aria-pressed="boardSel.includes(f.channel)" @click="toggleBoardSel(f.channel)"
+                      :title="f.label + ' (ch ' + f.channel + ')'">
+                <span class="swatch" :style="boardSwatch(f)"></span>
+                <span class="fixture-name" x-text="f.label"></span>
+                <span class="muted mono small" x-text="'ch ' + f.channel"></span>
+              </button>
             </template>
           </div>
           <p class="muted small" style="margin:0" x-text="boardSel.length + ' fixture(s) selected'"></p>

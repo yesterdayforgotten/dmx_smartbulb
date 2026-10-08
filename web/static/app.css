@@ -224,3 +224,9 @@ input[type=number].ch { width: 5em; }
 .run-row { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; gap: 8px; }
 .with-unit { display: flex; align-items: center; gap: 6px; }
 .with-unit input { flex: 0 1 7em; min-width: 0; }
+.fixture-grid { display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); max-height: 420px; overflow: auto; padding: 2px; }
+.fixture-tile { display: grid; justify-items: center; gap: 3px; padding: 8px 4px; background: var(--panel); border: 2px solid var(--line);
+                border-radius: 8px; color: var(--fg); cursor: pointer; min-width: 0; font: inherit; }
+.fixture-tile[aria-pressed="true"] { border-color: var(--accent); background: var(--panel-2); }
+.fixture-tile[aria-pressed="false"] { opacity: .6; }
+.fixture-tile .fixture-name { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
