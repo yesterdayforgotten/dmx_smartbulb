@@ -385,8 +385,11 @@ class Sender:
         trans = int(period * 1000) if self.adaptive else self.fixed_ms
         sent = 0
         for rt in active:
-            # A backed-off bulb sits out frames until its own interval has passed.
-            if rt.dirty and now - rt.last_send >= rt.interval - 1e-6:
+            # The frame period already respects min_interval. Only a backed-off
+            # bulb sits out frames until its own (longer) interval has passed;
+            # checking everyone's interval would make tick jitter skip frames.
+            ready = not rt.backed_off(self.min_interval) or now - rt.last_send >= rt.interval
+            if rt.dirty and ready:
                 if self._send(rt, now, transition_ms=trans):
                     sent += 1
         room = int(self.budget * period) - sent

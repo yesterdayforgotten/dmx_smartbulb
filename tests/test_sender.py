@@ -326,3 +326,27 @@ def test_sync_mode_skips_backed_off_bulb():
     before = len(sends)
     s.tick(100.1)
     assert "10.0.1.0" not in [ip for ip, _ in sends[before:]]
+
+
+
+def test_sync_mode_keeps_full_rate_when_interval_equals_frame_period():
+    """min interval 66 ms and 15 bulbs at 225 pkt/s give a 66.7 ms frame; with
+    10 ms ticks a bulb must still be sent every frame (15 Hz), not every other."""
+    n = 15
+    bulbs = {f"50C7BF0000{i:02X}": {"ip": f"10.0.1.{i}", "channel": 1 + 3 * i} for i in range(n)}
+    s, sent = make(bulbs, budget_pps=225, min_interval_ms=66, mode="sync", refresh_s=60)
+    sends, replies = [], []
+    s.send = lambda ip, cmd: sends.append(ip) or replies.append((ip, cmd)) or True
+    t = 0.0
+    while t < 10:
+        for ip, cmd in replies:
+            s.on_reply(ip, echo(cmd), t + 0.005)
+        replies.clear()
+        d = bytearray(512)
+        for i in range(n):
+            d[3 * i:3 * i + 3] = bytes([int(t * 31) & 0xFF, 255, 200])
+        s.update_dmx(bytes(d), t, t)
+        s.tick(t)
+        t += 0.0103                     # ticks that don't line up with the frame
+    rate = sends.count("10.0.1.0") / 10
+    assert rate == pytest.approx(15, abs=0.5)
