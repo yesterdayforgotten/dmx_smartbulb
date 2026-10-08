@@ -50,6 +50,7 @@ DEFAULTS = {
     },
     "dmx_loss": {"mode": "hold", "after_s": 5.0, "look": None},
     "identify": {"blink_hz": 2.0, "duration_s": 4.0},
+    "ui": {"title": "DMX Smart Bulbs"},
     "network": {"ssid": "", "password": ""},
     "auth": {"password_hash": None, "session_secret": None},
     "kasa_port": 9999,
@@ -184,6 +185,11 @@ def validate(raw):
     if loss["mode"] == "look" and loss["look"] not in cfg["looks"]:
         problems.append(f"DMX-loss look {loss['look']!r} doesn't exist")
 
+    title = cfg["ui"]["title"]
+    if not isinstance(title, str) or not title.strip() or len(title) > 60:
+        problems.append("page title must be 1-60 characters")
+    else:
+        cfg["ui"]["title"] = title.strip()
     ident = cfg["identify"]
     _num(problems, "identify blink rate", ident["blink_hz"], 0.2, 10)
     _num(problems, "identify duration", ident["duration_s"], 0.5, 60)

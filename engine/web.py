@@ -117,7 +117,8 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
     @app.get("/api/session")
     def session(request: Request):
         return {"setup_needed": not engine.cfg["auth"]["password_hash"],
-                "authenticated": authed(request.cookies.get(COOKIE))}
+                "authenticated": authed(request.cookies.get(COOKIE)),
+                "title": engine.cfg["ui"]["title"]}
 
     @app.post("/api/setup")
     def setup(body: dict = Body(...)):
@@ -344,7 +345,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
     @app.put("/api/settings")
     def settings(request: Request, body: dict = Body(...)):
         need_auth(request)
-        allowed = {"sender", "dmx_loss", "input", "network", "identify"}
+        allowed = {"sender", "dmx_loss", "input", "network", "identify", "ui"}
         if set(body) - allowed:
             raise HTTPException(400, f"settings can only change {', '.join(sorted(allowed))}")
         old_input = dict(engine.cfg["input"])

@@ -56,7 +56,7 @@ def test_first_run_setup_then_login(tmp_path):
     async def go():
         async with Harness(tmp_path) as h:
             c = h.client
-            assert (await c.get("/api/session")).json() == {"setup_needed": True, "authenticated": False}
+            assert (await c.get("/api/session")).json() == {"setup_needed": True, "authenticated": False, "title": "DMX Smart Bulbs"}
             assert (await c.get("/api/state")).status_code == 401
             assert (await c.post("/api/setup", json={"password": "abc"})).status_code == 400   # too short
             r = await c.post("/api/setup", json={"password": "secret123", "ssid": "ShowNet", "wifi_password": "pw"})
@@ -284,4 +284,14 @@ def test_rename_is_stored_on_the_bulb(tmp_path):
             assert h.engine.cfg["bulbs"][mac]["name"] == "Stage left 1"
             assert h.fleet.bulbs[0].alias == "Stage left 1"
             assert (await h.client.patch(f"/api/bulbs/{mac}", json={"dmx": False})).json() == {"ok": True}
+    run(go())
+
+
+def test_page_title_setting(tmp_path):
+    async def go():
+        async with Harness(tmp_path) as h:
+            await h.login()
+            assert (await h.client.put("/api/settings", json={"ui": {"title": "  Spring Musical  "}})).status_code == 200
+            assert (await h.client.get("/api/session")).json()["title"] == "Spring Musical"
+            assert (await h.client.put("/api/settings", json={"ui": {"title": " "}})).status_code == 400
     run(go())

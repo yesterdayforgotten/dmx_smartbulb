@@ -1,4 +1,4 @@
-// Stage Bulbs web UI (Alpine.js, no build step).
+// DMX Smart Bulbs web UI (Alpine.js, no build step).
 /* global Alpine */
 
 function kelvinToRgb(k) {
@@ -51,6 +51,10 @@ function app() {
     async refreshSession() {
       const r = await fetch('/api/session');
       this.session = await r.json();
+      document.title = this.pageTitle();
+    },
+    pageTitle() {
+      return (this.cfg && this.cfg.ui && this.cfg.ui.title) || this.session.title || 'DMX Smart Bulbs';
     },
     async start() {
       await this.loadState();
@@ -131,7 +135,9 @@ function app() {
       // The DMX input is set up on the Pi (config file / setup script), not here.
       this.settings = JSON.parse(JSON.stringify({
         sender: s.config.sender, dmx_loss: s.config.dmx_loss, network: s.config.network, identify: s.config.identify,
+        ui: s.config.ui,
       }));
+      document.title = this.pageTitle();
       this.syncPowerOn();
     },
     connect() {

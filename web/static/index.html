@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f1214">
-<title>Stage Bulbs</title>
+<title>DMX Smart Bulbs</title>
 <link rel="stylesheet" href="app.css">
 <script src="app.js"></script>
 <script defer src="vendor/alpine.min.js"></script>
@@ -15,7 +15,7 @@
 <template x-if="loaded && !session.authenticated">
   <div class="login">
     <form @submit.prevent="session.setup_needed ? doSetup() : doLogin()">
-      <h1 x-text="session.setup_needed ? 'Set up Stage Bulbs' : 'Stage Bulbs'"></h1>
+      <h1 x-text="session.setup_needed ? 'Set up ' + pageTitle() : pageTitle()"></h1>
       <p class="muted" x-show="session.setup_needed">Choose the password venue staff will use for this page.</p>
       <label class="field"><span>Password</span>
         <input id="pw" type="password" x-model="pw" autocomplete="current-password" required></label>
@@ -39,7 +39,7 @@
 <div>
   <header class="top">
     <div class="wrap">
-      <div class="brand">Stage Bulbs</div>
+      <div class="brand" x-text="pageTitle()"></div>
       <div class="health">
         <button type="button" class="pill pill-btn" :class="dmxPillClass()" @click="dmxPopup = true" title="DMX input details and on/off">
           <span class="dot"></span><span x-text="dmxPillText()"></span></button>
@@ -477,6 +477,12 @@
           <label class="field" x-show="settings.dmx_loss.mode !== 'hold'"><span>After (s)</span><input id="lossafter" type="number" min="1" max="3600" x-model.number="settings.dmx_loss.after_s"></label>
           <label class="field" x-show="settings.dmx_loss.mode === 'look'"><span>Look</span>
             <select id="losslook" x-model="settings.dmx_loss.look"><template x-for="n in Object.keys(cfg.looks)"><option :value="n" x-text="n"></option></template></select></label>
+        </section>
+
+        <h2>Page</h2>
+        <section class="card row">
+          <label class="field" style="flex:1; max-width:420px"><span>Page title</span>
+            <input id="pagetitle" type="text" maxlength="60" required x-model="settings.ui.title"></label>
         </section>
 
         <h2>Identify</h2>
