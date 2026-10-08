@@ -387,8 +387,9 @@
       <form class="stack" @submit.prevent="saveSettings()">
         <h2>Sending to bulbs</h2>
         <section class="card row">
-          <label class="field"><span>Budget (packets/s, whole rig)</span><input id="budget" type="number" min="1" max="5000" x-model.number="settings.sender.budget_pps"></label>
+          <label class="field"><span>Total packet budget (packets/s for all bulbs together)</span><input id="budget" type="number" min="1" max="5000" x-model.number="settings.sender.budget_pps"></label>
           <label class="field"><span>Per-bulb minimum interval (ms)</span><input id="mininterval" type="number" min="10" max="2000" x-model.number="settings.sender.min_interval_ms"></label>
+          <p class="muted small" style="margin:0" x-text="rateSummary()"></p>
           <label class="field"><span>Maximum backoff (ms)</span><input id="maxbackoff" type="number" min="10" max="60000" x-model.number="settings.sender.max_backoff_ms"></label>
           <label class="field"><span>Re-send unconfirmed after (s)</span><input id="refresh" type="number" min="0.2" max="60" step="0.1" x-model.number="settings.sender.refresh_s"></label>
           <label class="field"><span>Lost replies before slowing a bulb</span><input id="backoffafter" type="number" min="1" max="50" x-model.number="settings.sender.backoff_after"></label>

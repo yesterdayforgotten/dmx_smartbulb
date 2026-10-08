@@ -409,6 +409,14 @@ function app() {
       ];
       return out;
     },
+    rateSummary() {
+      const snd = (this.settings && this.settings.sender) || {};
+      const n = Object.keys(this.cfg.bulbs || {}).length, budget = snd.budget_pps || 1, min = snd.min_interval_ms || 1;
+      const round = Math.max(min, (1000 * n) / budget);
+      const why = round > min ? 'limited by the budget' : 'limited by the per-bulb interval';
+      return `With ${n} bulbs: each bulb gets up to ${(1000 / round).toFixed(1)} updates/s, `
+        + `and a DMX change waits up to ${Math.round(round)} ms to go out (${why}).`;
+    },
     openMenu(b, el) {
       if (this.menuFor === b.mac) { this.menuFor = null; return; }
       // Fixed position from the button, flipped up when it would run off the bottom.
