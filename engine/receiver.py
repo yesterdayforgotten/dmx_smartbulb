@@ -100,8 +100,28 @@ class Shared:
         self.stats[_IDX[name]] = value
 
 
+PR_SET_PDEATHSIG = 1
+
+
+def _die_with_parent():
+    """Ask the kernel to SIGTERM this process when its parent dies, so a killed
+    engine never leaves a receiver holding the serial port."""
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6", use_errno=True).prctl(PR_SET_PDEATHSIG, signal.SIGTERM)
+    except (OSError, AttributeError):
+        pass
+
+
 def _child(backend, port, shared, rt_priority):
+    # A forked child inherits the parent's Python signal handlers (uvicorn
+    # installs one for SIGTERM that only sets a flag), so restore the defaults:
+    # SIGTERM must end the receiver.
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
     signal.signal(signal.SIGINT, signal.SIG_IGN)   # the parent handles Ctrl-C
+    _die_with_parent()
+    if os.getppid() == 1:
+        os._exit(0)          # the parent died before we got here
     os.close(shared.wake_r)
     if rt_priority:
         try:

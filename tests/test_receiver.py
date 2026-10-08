@@ -1,6 +1,7 @@
 import os
 import pty
 import time
+from pathlib import Path
 
 import pytest
 
@@ -111,3 +112,45 @@ def test_esp32_receiver_over_a_pty():
         r.stop()
         os.close(master)
         os.close(slave)
+
+
+def test_receiver_ends_on_sigterm_even_if_parent_had_a_handler(recording):
+    """uvicorn installs a SIGTERM handler that only sets a flag; the forked
+    receiver must not inherit it."""
+    import signal as sig
+    old = sig.signal(sig.SIGTERM, lambda *a: None)
+    try:
+        r = Receiver("replay", str(recording))
+        r.start()
+        assert wait_for(lambda: r.snapshot()[0] > 0)
+        r.proc.terminate()
+        r.proc.join(3)
+        assert not r.proc.is_alive()
+    finally:
+        sig.signal(sig.SIGTERM, old)
+
+
+def test_receiver_dies_with_its_parent(recording, tmp_path):
+    """If the engine is killed outright, its receiver must not linger."""
+    import subprocess
+    import sys
+    code = f"""
+import sys, time
+sys.path.insert(0, {str(Path(__file__).resolve().parent.parent)!r})
+from engine.receiver import Receiver
+r = Receiver("replay", {str(recording)!r}); r.start()
+print(r.proc.pid, flush=True)
+time.sleep(60)
+"""
+    p = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True)
+    child = int(p.stdout.readline())
+    p.kill()
+    p.wait()
+    def gone():
+        try:
+            os.kill(child, 0)
+            with open(f"/proc/{child}/stat") as f:
+                return f.read().split()[2] == "Z"
+        except ProcessLookupError:
+            return True
+    assert wait_for(gone, 3.0)
