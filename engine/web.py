@@ -413,6 +413,14 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
             engine.board.set_fixture_color(chans, int(body.get("h", 0)), int(body.get("s", 0)), int(body.get("v", 0)))
         return {"ok": True}
 
+    @app.post("/api/board/cct")
+    async def board_cct(request: Request, body: dict = Body(...)):
+        """Set the color-temperature channel of the chosen HSIC fixtures: {channels, k}."""
+        need_auth(request)
+        board_running()
+        n = engine.board.set_fixture_cct([int(c) for c in body.get("channels") or []], float(body.get("k", 3200)))
+        return {"ok": True, "fixtures": n}
+
     @app.post("/api/board/show")
     async def board_show(request: Request, body: dict = Body(...)):
         need_auth(request)

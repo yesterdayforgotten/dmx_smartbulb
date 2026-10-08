@@ -169,7 +169,8 @@ input[type=number].ch { width: 5em; }
 .fixture-list { display: grid; gap: 6px; max-height: 360px; overflow: auto; padding-right: 4px; }
 .fixture-list .switch { gap: 8px; }
 .faders { display: flex; flex-wrap: wrap; gap: 12px; }
-.faders .fader-group { width: 168px; box-sizing: border-box; }
+.faders .fader-group { width: 186px; box-sizing: border-box; }
+.faders .fader-group.wide { width: 244px; }
 .faders .fader-group .row { gap: 6px; flex-wrap: nowrap; }
 .faders .fader-group strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 .vfaders { display: flex; justify-content: space-around; }
@@ -245,3 +246,5 @@ input[type=number].ch { width: 5em; }
 .mode-tag.hsic { border-color: var(--accent); color: var(--accent); }
 input.ch.clash { border-color: var(--bad); color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
 .bad-text { color: var(--bad); }
+.vfader { width: 54px; text-align: center; }
+.vfader .fname { font-size: 11px; line-height: 1.1; color: var(--muted); }

@@ -31,7 +31,7 @@ function app() {
     info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, menuPos: { x: 0, y: 0 }, groupPopup: null, groupSheet: null,
     dmxPopup: false, assign: null, delayPop: false, bulkGroups: false, confirmDlg: null,
     board: null, boardMode: 'color', boardSel: [], boardColor: { h: 30, s: 80, v: 70 }, boardTemp: 3200,
-    boardColorMode: 'hsv', boardSpeed: 1, boardShowTarget: 'all', _boardTimers: {},
+    boardSpeed: 1, boardShowTarget: 'all', _boardTimers: {},
     color: { h: 30, s: 80, v: 70 }, temp: 3200, mode: 'hsv', _sendTimer: null,
     powerOn: { mode: 'white', k: 2700, h: 30, s: 80, v: 80 }, pwChange: { current: '', next: '' },
     toast: null, _toastTimer: null, _drag: null,
@@ -707,18 +707,25 @@ function app() {
     },
     boardWheelPick(ev) {
       const p = this.wheelAt(ev);
-      this.boardColorMode = 'hsv';
       this.boardColor.h = p.h; this.boardColor.s = p.s;
       if (this.boardColor.v === 0) this.boardColor.v = 70;
       this.boardSendColor();
     },
     boardSendColor() {
       if (!this.boardSel.length) { this.say('Pick at least one fixture', true); return; }
-      const body = this.boardColorMode === 'temp'
-        ? { channels: this.boardSel, k: this.boardTemp, v: this.boardColor.v }
-        : { channels: this.boardSel, ...this.boardColor };
+      const body = { channels: this.boardSel, ...this.boardColor };
       this.boardThrottle('color', async () => {
         await this.act(this.api('POST', '/api/board/color', body));
+        if (this.board) this.board.active = true;
+      });
+    },
+    boardHsicSelected() {
+      return this.board ? this.board.fixtures.filter((f) => f.size === 4 && this.boardSel.includes(f.channel)).length : 0;
+    },
+    boardSendCct() {
+      const body = { channels: this.boardSel, k: this.boardTemp };
+      this.boardThrottle('cct', async () => {
+        await this.act(this.api('POST', '/api/board/cct', body));
         if (this.board) this.board.active = true;
       });
     },

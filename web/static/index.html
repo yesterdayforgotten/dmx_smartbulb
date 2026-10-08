@@ -357,14 +357,18 @@
           <canvas class="wheel" width="520" height="520" x-ref="boardwheel" x-init="$nextTick(() => drawWheel($el))" @pointerdown="boardWheelPick($event)" @pointermove="$event.buttons && boardWheelPick($event)"></canvas>
           <label class="field"><span x-text="'Hue ' + Math.round(boardColor.h) + '°'"></span>
             <input id="bhue" type="range" class="hue-range" min="0" max="359" x-model.number="boardColor.h"
-                   @input="boardColorMode = 'hsv'; boardSendColor()"></label>
+                   @input="boardSendColor()"></label>
           <label class="field"><span x-text="'Saturation ' + Math.round(boardColor.s) + '%'"></span>
             <input id="bsat" type="range" class="sat-range" min="0" max="100" x-model.number="boardColor.s" :style="satTrack(boardColor.h)"
-                   @input="boardColorMode = 'hsv'; boardSendColor()"></label>
-          <label class="field"><span x-text="'Brightness ' + boardColor.v + '%'"></span>
+                   @input="boardSendColor()"></label>
+          <label class="field"><span x-text="'Intensity ' + boardColor.v + '%'"></span>
             <input id="bbright" type="range" min="0" max="100" x-model.number="boardColor.v" @input="boardSendColor()"></label>
-          <label class="field"><span x-text="'White ' + boardTemp + ' K'"></span>
-            <input id="btemp" type="range" class="temp-range" min="2500" max="6500" step="50" x-model.number="boardTemp" @input="boardColorMode = 'temp'; boardSendColor()"></label>
+          <label class="field"><span x-text="'Color temperature ' + boardTemp + ' K'"></span>
+            <input id="btemp" type="range" class="temp-range" min="2500" max="6500" step="50" x-model.number="boardTemp" @input="boardSendCct()"
+                   :disabled="!boardHsicSelected()"></label>
+          <p class="muted small" style="margin:0" x-text="boardHsicSelected()
+              ? `Sets the C channel of the ${boardHsicSelected()} selected HSIC fixture(s); they show it as white when Saturation is 0.`
+              : 'Only HSIC fixtures have a color temperature (C) channel; none are selected.'"></p>
         </div>
         <div class="stack">
           <div class="row">
@@ -389,14 +393,14 @@
       <!-- Fader mode -->
       <div x-show="boardMode === 'faders'" class="faders">
         <template x-for="f in (board ? board.fixtures : [])" :key="f.channel">
-          <div class="fader-group">
+          <div class="fader-group" :class="f.size === 4 && 'wide'">
             <div class="row"><span class="swatch" :style="boardSwatch(f)"></span><strong x-text="f.label" :title="f.label"></strong></div>
             <div class="vfaders">
-              <template x-for="[key, off, name] in (f.size === 4 ? [['h', 0, 'Hue'], ['s', 1, 'Sat'], ['v', 2, 'Bri'], ['c', 3, 'CCT']] : [['h', 0, 'Hue'], ['s', 1, 'Sat'], ['v', 2, 'Bri']])" :key="key">
+              <template x-for="[key, off, name] in (f.size === 4 ? [['h', 0, 'Hue'], ['s', 1, 'Saturation'], ['v', 2, 'Intensity'], ['c', 3, 'Color temp']] : [['h', 0, 'Hue'], ['s', 1, 'Saturation'], ['v', 2, 'Intensity']])" :key="key">
                 <label class="vfader"><span class="mono small" x-text="f[key]"></span>
                   <input type="range" min="0" max="255" :value="f[key]" :aria-label="f.label + ' ' + name + ' (ch ' + (f.channel + off) + ')'"
                          @input="f[key] = +$event.target.value; boardFader(f.channel + off, +$event.target.value)">
-                  <span class="small muted" x-text="name"></span><span class="mono small muted" x-text="f.channel + off"></span></label>
+                  <span class="fname" x-text="name"></span><span class="mono small muted" x-text="f.channel + off"></span></label>
               </template>
             </div>
           </div>

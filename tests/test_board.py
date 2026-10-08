@@ -71,3 +71,12 @@ def test_white_is_real_on_hsic_fixtures():
     assert b.values[5] > 0                                  # HSI: a pale tint (saturation above 0)
     vals = {f["channel"]: f for f in b.patched_values()}
     assert vals[1]["c"] == 255 and vals[1]["size"] == 4 and "c" not in vals[5]
+
+
+def test_cct_only_touches_hsic_fixtures():
+    b = Board(lambda: [("a", 1, 4), ("b", 5, 3)])
+    b.set_fixture_color([1, 5], 120, 100, 100)
+    before = bytes(b.values[:8])
+    assert b.set_fixture_cct([1, 5], 6500) == 1
+    assert b.values[3] == 255                               # a's C channel
+    assert bytes(b.values[:3]) == before[:3] and bytes(b.values[4:8]) == before[4:8]

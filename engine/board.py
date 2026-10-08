@@ -168,6 +168,18 @@ class Board:
                 elif 1 <= ch <= 510:
                     self.values[ch - 1:ch + 2] = bytes(hsv_to_dmx(h, sat, v))
 
+    def set_fixture_cct(self, channels, k):
+        """Set only the color-temperature channel of the HSIC fixtures among
+        `channels`; HSI fixtures have none and are left alone. Shows never write
+        this channel, so they keep running."""
+        lo, hi = WHITE_K
+        cct = round(max(0, min(1, (k - lo) / (hi - lo))) * 255)
+        hsic = [ch for _, ch, size in self._fixtures() if size == 4 and ch in set(channels) and ch <= 509]
+        with self._lock:
+            for ch in hsic:
+                self.values[ch + 2] = cct
+        return len(hsic)
+
     def set_fixture_color(self, channels, h, s, v):
         """Write one color to each fixture's three channels."""
         self._take_over(set(channels))
