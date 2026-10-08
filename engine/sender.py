@@ -14,8 +14,9 @@ Each tick (a new DMX frame, or every 10 ms):
    Leftover budget refreshes bulbs whose last command is older than refresh_s.
 4. Replies (KL bulbs answer every command) mark a bulb online and measure its
    round-trip time. A command with no reply within REPLY_TIMEOUT counts as a
-   miss and doubles that bulb's interval, up to max_backoff_ms; replies ease
-   it back toward min_interval_ms.
+   miss; BACKOFF_AFTER misses in a row double that bulb's interval (up to
+   max_backoff_ms), so the odd lost WiFi packet doesn't slow a bulb down.
+   Replies ease it back toward min_interval_ms.
 
 This module does no I/O itself: send(ip, command) is injected and time is passed
 in, so the logic can be tested exactly.
@@ -28,6 +29,7 @@ from engine import kasa
 from engine.config import bulb_channel
 
 REPLY_TIMEOUT = 0.5      # s: a command not answered within this is a miss
+BACKOFF_AFTER = 3        # consecutive misses before backing off (WiFi drops the odd packet)
 OFFLINE_AFTER = 5.0      # s without any reply while commands are going out
 BURST_S = 0.05           # the budget may be spent this far ahead (token bucket depth)
 AGE_WEIGHT = 10.0        # priority added per second a change has waited (100 ms ~ a full change)
@@ -64,6 +66,26 @@ def change_size(a, b):
     return max(abs(a[1] - b[1]) / 4000, abs(a[2] - b[2]) / 100)
 
 
+def state_key(state):
+    """What a bulb echoes back for this state, to match replies to commands."""
+    if state[0] == "hsv":
+        return ("off",) if state[3] == 0 else ("hsv", 180 if state[2] == 0 else state[1], state[2], state[3])
+    return ("off",) if state[2] == 0 else ("temp", round(state[1]), state[2])
+
+
+def reply_key(reply):
+    """The state a light-state reply reports, as a state_key, or None."""
+    try:
+        st = reply[kasa.LIGHTING]["transition_light_state"]
+    except (KeyError, TypeError):
+        return None
+    if not st.get("on_off", 1):
+        return ("off",)
+    if st.get("color_temp"):
+        return ("temp", st["color_temp"], st.get("brightness"))
+    return ("hsv", st.get("hue"), st.get("saturation"), st.get("brightness"))
+
+
 def command_for(state, transition_ms):
     if state[0] == "hsv":
         return kasa.light_state(state[1], state[2], state[3], transition_ms)
@@ -89,6 +111,7 @@ class BulbRuntime:
         self.pending = collections.deque()   # send times not yet answered
         self.last_reply = None
         self.replies = self.misses = self.sends = 0
+        self.miss_streak = 0         # misses since the last reply
         self.rtt = None              # smoothed round-trip time, s
         self.hold_until = 0.0        # ignore DMX until then (identify)
         self.last_poll = -math.inf   # last status query (engine polls quiet bulbs)
@@ -222,19 +245,41 @@ class Sender:
         if rt is None:
             return
         rt.last_reply = t
+        key = reply_key(reply)
+        if key is None:
+            return                      # a status query's reply: proves it's online, nothing to match
         rt.replies += 1
-        if rt.pending:
-            sample = t - rt.pending.popleft()
+        # Match the reply to the command it answers. Commands sent before it
+        # whose replies never came were lost.
+        idx = next((i for i, (_, k) in enumerate(rt.pending) if k == key), None)
+        if idx is None:
+            idx = 0 if rt.pending else None     # unrecognised echo: assume the oldest
+        if idx is not None:
+            lost = idx
+            for _ in range(idx):
+                rt.pending.popleft()
+            sent_at, _ = rt.pending.popleft()
+            sample = t - sent_at
             rt.rtt = sample if rt.rtt is None else rt.rtt * 0.8 + sample * 0.2
+            rt.misses += lost
+            if lost >= BACKOFF_AFTER:
+                self._back_off(rt)
+        rt.miss_streak = 0
         # Recovering: ease the interval back toward the configured minimum.
         if rt.interval > self.min_interval:
             rt.interval = max(self.min_interval, rt.interval * 0.9)
 
+    def _back_off(self, rt):
+        rt.interval = min(self.max_interval, max(rt.interval, self.min_interval) * 2)
+
     def _expire(self, rt, now):
-        while rt.pending and now - rt.pending[0] > REPLY_TIMEOUT:
+        """Commands unanswered for REPLY_TIMEOUT: the bulb has gone quiet."""
+        while rt.pending and now - rt.pending[0][0] > REPLY_TIMEOUT:
             rt.pending.popleft()
             rt.misses += 1
-            rt.interval = min(self.max_interval, max(rt.interval, self.min_interval) * 2)
+            rt.miss_streak += 1
+            if rt.miss_streak >= BACKOFF_AFTER:
+                self._back_off(rt)
 
     # ---- sending ---------------------------------------------------------
 
@@ -260,7 +305,7 @@ class Sender:
         rt.dirty_since = None
         rt.last_send = now
         rt.sends += 1
-        rt.pending.append(now)
+        rt.pending.append((now, state_key(rt.target)))
         if len(rt.pending) > 20:
             rt.pending.popleft()
         self.stats["sent"] += 1
@@ -319,6 +364,7 @@ class Sender:
                 "rtt_ms": None if rt.rtt is None else round(rt.rtt * 1000, 1),
                 "reply_rate": round(rt.replies / rt.sends, 3) if rt.sends else None,
                 "interval_ms": round(rt.interval * 1000), "backoff": rt.backed_off(self.min_interval),
+                "sends": rt.sends, "replies": rt.replies, "misses": rt.misses,
             }
         return out
 

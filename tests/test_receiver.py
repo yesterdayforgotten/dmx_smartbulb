@@ -102,12 +102,15 @@ def test_esp32_receiver_over_a_pty():
     r = Receiver("esp32", os.ttyname(slave))
     r.start()
     try:
-        time.sleep(0.3)
-        for fill in (5, 6, 7):
-            os.write(master, esp32_frame(fill))
-            time.sleep(0.05)
-        assert wait_for(lambda: r.snapshot()[2][:3] == bytes([7, 7, 7]))
-        assert r.stats()["frames"] >= 3 or wait_for(lambda: r.stats()["frames"] >= 3)
+        # Keep writing until the receiver (which may start slowly on a busy Pi)
+        # has the port open and publishes the frames.
+        def frames_arrive():
+            for fill in (5, 6, 7):
+                os.write(master, esp32_frame(fill))
+                time.sleep(0.02)
+            return r.snapshot()[2][:3] == bytes([7, 7, 7])
+        assert wait_for(frames_arrive, 10.0)
+        assert wait_for(lambda: r.stats()["frames"] >= 3, 5.0)
     finally:
         r.stop()
         os.close(master)

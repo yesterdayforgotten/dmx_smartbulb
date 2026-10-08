@@ -31,6 +31,11 @@ def state_of(cmd):
     return cmd[LIGHT]["transition_light_state"]
 
 
+def echo(cmd):
+    """What a KL bulb replies: the state it just set."""
+    return {LIGHT: {"transition_light_state": dict(state_of(cmd), err_code=0)}}
+
+
 def test_curve():
     assert [apply_curve(v, "linear") for v in (0, 2, 3, 255)] == [0, 0, 1, 100]
     assert apply_curve(128, "square") < apply_curve(128, "linear")
@@ -169,11 +174,18 @@ def test_backoff_on_missed_replies_and_recovery():
     a = s.bulbs[A]
     assert a.interval == pytest.approx(0.8) and a.backed_off(s.min_interval)
     assert not a.online(t)
-    for i in range(40):                       # replies come back
-        s.on_reply("10.0.0.1", {}, t)
+    i = 0
+    while a.interval > s.min_interval and i < 400:   # replies come back while it keeps sending
+        s.update_dmx(frame(c1=(100 + i) & 0xFF, c2=255, c3=255), t, t)
+        before = len(sent)
+        s.tick(t)
+        for ip, cmd in sent[before:]:
+            if ip == "10.0.0.1":
+                s.on_reply(ip, echo(cmd), t + 0.01)
         t += 0.05
+        i += 1
     assert a.interval == pytest.approx(0.05) and a.online(t)
-    assert a.rtt is not None
+    assert a.rtt == pytest.approx(0.01)
 
 
 def test_channel_510_works():
@@ -216,11 +228,11 @@ def test_small_changes_are_not_starved_by_big_ones():
     bulbs = {f"50C7BF0000{i:02X}": {"ip": f"10.0.1.{i}", "channel": 1 + 3 * i} for i in range(20)}
     s, sent = make(bulbs, budget_pps=100)
     replies = []
-    s.send = lambda ip, cmd: sent.append(ip) or replies.append(ip) or True
+    s.send = lambda ip, cmd: sent.append(ip) or replies.append((ip, cmd)) or True
     t = 0.0
     while t < 10:
-        for ip in replies:
-            s.on_reply(ip, {}, t)
+        for ip, cmd in replies:
+            s.on_reply(ip, echo(cmd), t)
         replies.clear()
         d = bytearray(512)
         k = int(t * 31)
@@ -235,3 +247,24 @@ def test_small_changes_are_not_starved_by_big_ones():
     rate_dim = sent.count("10.0.1.0") / 10
     fair = 100 / 20
     assert rate_dim > fair * 0.6, f"dim bulb got {rate_dim}/s, fair share {fair}/s"
+
+
+def test_occasional_loss_does_not_back_off():
+    """1-3% loss is normal on WiFi; a single miss must not halve a bulb's rate."""
+    s, sent = make(min_interval_ms=100)
+    t, n = 0.0, 0
+    while t < 20:
+        s.update_dmx(frame(c1=int(t * 31) & 0xFF, c2=255, c3=255), t, t)
+        before = len(sent)
+        s.tick(t)
+        for ip, cmd in sent[before:]:
+            if ip != "10.0.0.1":
+                continue
+            n += 1
+            if n % 50 != 0:                          # lose 2% of a's replies
+                s.on_reply(ip, echo(cmd), t + 0.01)
+        t += 0.02
+    a = s.bulbs[A]
+    assert a.misses == pytest.approx(n / 50, abs=1)  # every lost reply is counted, exactly
+    assert not a.backed_off(s.min_interval)
+    assert a.rtt == pytest.approx(0.01)               # and RTT isn't skewed by the losses

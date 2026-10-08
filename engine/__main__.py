@@ -39,6 +39,8 @@ def cmd_run(args):
                                                log_level="warning", lifespan="off"))
         eng = asyncio.create_task(engine.run())
         web = asyncio.create_task(server.serve())
+        if args.status_file:
+            asyncio.create_task(write_status(engine, args.status_file))
         logging.getLogger("engine").info("web UI on port %d", cfg["web_port"])
         done, _ = await asyncio.wait({eng, web}, return_when=asyncio.FIRST_COMPLETED)
         engine._stopping = True
@@ -50,6 +52,23 @@ def cmd_run(args):
         asyncio.run(serve())
     except KeyboardInterrupt:
         pass
+
+
+async def write_status(engine, path, every=5.0):
+    """Write the engine's status as JSON every few seconds (point it at RAM,
+    e.g. /run/dmx_smartbulb/status.json, so the SD card stays quiet)."""
+    import json
+    import os
+    await asyncio.sleep(2)
+    while True:
+        try:
+            tmp = path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump({"time": __import__("time").time(), **engine.status()}, f, default=str)
+            os.replace(tmp, path)
+        except OSError as e:
+            logging.getLogger("engine").warning("can't write status file: %s", e)
+        await asyncio.sleep(every)
 
 
 def cmd_import_django_db(args):
@@ -122,6 +141,7 @@ def main():
     run.add_argument("--discover", metavar="IPS", help="comma-separated discovery targets (default: broadcast)")
     run.add_argument("--web-port", type=int, help="override the configured web port (e.g. 8080 when developing)")
     run.add_argument("--firmware-dir", default="/var/lib/dmx_smartbulb/firmware")
+    run.add_argument("--status-file", metavar="PATH", help="write status JSON here every 5 s")
     run.set_defaults(func=cmd_run)
 
     imp = sub.add_parser("import-django-db", help="import bulbs from the old app")

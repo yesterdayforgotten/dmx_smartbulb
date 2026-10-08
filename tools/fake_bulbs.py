@@ -8,6 +8,10 @@ loss and offline bulbs can be set at start and changed while running.
 
     python3 tools/fake_bulbs.py --count 32 --latency 5 --loss 1
     # then type commands:  offline 3 | online 3 | latency 3 50 | loss 0 | stats | quit
+    python3 tools/fake_bulbs.py --count 48 --mirror 192.168.10.1
+    # --mirror forwards a same-size copy of every received packet to that host's
+    # UDP discard port, so the engine's traffic to the fake bulbs also loads the
+    # real network (Ethernet and router; not WiFi airtime).
 
 The engine reaches them with kasa_port 9999 and bulb IPs 127.0.0.10+. Tests use
 FakeBulbFleet directly.
@@ -25,6 +29,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from engine import kasa  # noqa: E402
 
 LIGHTING = kasa.LIGHTING
+
+
+MIRROR = {"sock": None, "addr": None, "count": 0}
 
 
 class FakeBulb(asyncio.DatagramProtocol):
@@ -91,6 +98,12 @@ class FakeBulb(asyncio.DatagramProtocol):
 
     def datagram_received(self, data, addr):
         self.received += 1
+        if MIRROR["sock"] is not None:
+            try:
+                MIRROR["sock"].sendto(data, MIRROR["addr"])
+                MIRROR["count"] += 1
+            except OSError:
+                pass
         if not self.online or self.rng.random() < self.loss:
             return
         try:
@@ -142,6 +155,11 @@ class FakeBulbFleet:
 
 
 async def console(fleet):
+    import os
+    import stat
+    mode = os.fstat(sys.stdin.fileno()).st_mode
+    if not (sys.stdin.isatty() or stat.S_ISFIFO(mode) or stat.S_ISSOCK(mode)):
+        await asyncio.Event().wait()     # no console (e.g. under systemd): run until killed
     loop = asyncio.get_running_loop()
     reader = asyncio.StreamReader()
     await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
@@ -161,6 +179,8 @@ async def console(fleet):
             elif cmd == "loss":
                 for b in ([fleet.bulbs[int(args[0])]] if len(args) > 1 else fleet.bulbs):
                     b.loss = float(args[-1]) / 100
+            elif cmd == "mirror":
+                print(f"mirrored {MIRROR['count']} packets to {MIRROR['addr']}")
             elif cmd == "stats":
                 for b in fleet.bulbs:
                     s = b.state
@@ -182,7 +202,13 @@ async def main():
     ap.add_argument("--port", type=int, default=kasa.KASA_PORT)
     ap.add_argument("--latency", type=float, default=5.0, help="reply latency in ms (+-30%%)")
     ap.add_argument("--loss", type=float, default=0.0, help="percent of packets dropped")
+    ap.add_argument("--mirror", metavar="HOST", help="also send a copy of every packet to HOST:9 (discard)")
     args = ap.parse_args()
+    if args.mirror:
+        import socket
+        MIRROR["sock"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        MIRROR["sock"].setblocking(False)
+        MIRROR["addr"] = (args.mirror, 9)
     fleet = await FakeBulbFleet(args.count, args.base_ip, args.port, args.latency, args.loss / 100).start()
     print(f"{args.count} fake bulbs on {fleet.ips[0]}..{fleet.ips[-1]} port {args.port}", flush=True)
     print(json.dumps({b.ip: b.mac for b in fleet.bulbs[:3]}), "...", flush=True)
