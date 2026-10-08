@@ -234,7 +234,7 @@
           <thead><tr>
             <th><input type="checkbox" aria-label="Select all shown" :checked="filteredBulbs().length && filteredBulbs().every(b => selected.includes(b.mac))"
                        @change="selectShown($event.target.checked)"></th>
-            <th></th><th>Name</th><th title="First of the 3 DMX channels (hue, saturation, brightness) this bulb listens to: its own (Solo), or a group's shared one">Starting Channel</th><th>DMX</th><th>Groups</th><th>Status</th><th title="Firmware update available">FW</th><th title="Round-trip time: command sent to the bulb's reply">RTT</th><th></th>
+            <th></th><th>Name</th><th title="First of the 3 DMX channels (hue, saturation, brightness) this bulb listens to: its own (Solo), or a group's shared one">Starting Channel</th><th>DMX</th><th>Groups</th><th>Status</th><th title="Firmware update available">FW</th><th class="num" title="Round-trip time: command sent to the bulb's reply">RTT</th><th></th>
           </tr></thead>
           <tbody>
             <template x-for="b in filteredBulbs()" :key="b.mac">

@@ -252,3 +252,4 @@ input.ch.clash { border-color: var(--bad); color: var(--bad); background: color-
 input.val-box { width: 4.2em; min-height: 24px; height: 24px; padding: 0 4px; font: 12px ui-monospace, monospace; text-align: right; }
 input.val-box.wide { width: 5.4em; }
 input.val-box.fader-box { width: 3.6em; text-align: center; }
+th.num { text-align: right; }
