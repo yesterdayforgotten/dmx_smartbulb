@@ -10,6 +10,10 @@ Layout (see DEFAULTS for every setting):
     looks   {name: {MAC: {"h", "s", "v"} or {"k", "v"}}}   Kasa units
     input, sender, dmx_loss, network, auth, kasa_port, web_port
 
+It lives in /var/lib/dmx_smartbulb on the root filesystem (ext4, journaled), not the
+FAT boot partition: a power cut mid-save there could damage the partition the Pi boots
+from. Nothing writes it except a save from the web UI.
+
 Saving keeps two copies (config.json and config.json.bak), each wrapped with a
 sequence number and a SHA-256 of its contents, written to a temp file, fsynced
 and renamed over the older copy. Loading takes the newest copy whose checksum
@@ -25,7 +29,7 @@ import re
 import time
 from pathlib import Path
 
-DEFAULT_PATH = Path("/boot/firmware/dmx_smartbulb/config.json")
+DEFAULT_PATH = Path("/var/lib/dmx_smartbulb/config.json")
 MAX_BULBS = 170          # 512 channels / 3
 MAX_CHANNEL = 510        # a bulb uses N, N+1, N+2 (N+3 too in HSIC mode)
 # Channels per mode. HSIC adds a color-temperature channel: at saturation 0

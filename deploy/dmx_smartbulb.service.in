@@ -1,0 +1,27 @@
+# Installed by `python -m engine setup`; @REPO@ and @VENV@ are filled in.
+[Unit]
+Description=DMX Smart Bulbs engine
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=dmxbulb
+Group=dmxbulb
+SupplementaryGroups=dialout
+WorkingDirectory=@REPO@
+# Port 80, binding to the WiFi interface for pairing, and the receiver's real-time priority.
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW CAP_SYS_NICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW CAP_SYS_NICE
+# '+' runs it as root: keep the UART interrupt on CPU 3, away from the engine.
+ExecStartPre=+@REPO@/deploy/pin-uart-irq.sh
+ExecStart=@VENV@/bin/python -m engine --config /var/lib/dmx_smartbulb/config.json run --firmware-dir /var/lib/dmx_smartbulb/firmware --status-file /dev/shm/dmx_status.json
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/dmx_smartbulb /dev/shm
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,5 @@
-django
-schedule
-schedule
-stupidartnet
-pyserial>=3.5
-gunicorn
+# Runtime dependencies (installed into .venv by setup.sh)
+fastapi==0.142.4
+uvicorn==0.54.0
+websockets==17.2
+pyserial==3.5

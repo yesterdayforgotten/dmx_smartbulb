@@ -128,6 +128,9 @@ def cmd_firmware(args):
 
 
 def main():
+    if sys.argv[1:2] == ["setup"]:
+        from engine.setup import main as setup_main   # has its own options
+        sys.exit(setup_main(sys.argv[2:]))
     ap = argparse.ArgumentParser(prog="python -m engine", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default=str(DEFAULT_PATH))
