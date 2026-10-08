@@ -203,7 +203,7 @@
         </select>
         <button class="btn small primary" type="button" @click="discover()" :disabled="discovering" x-text="discovering ? 'Searching…' : 'Find bulbs'"></button>
       </div>
-      <div class="toolbar selection-bar" x-show="selected.length" x-cloak>
+      <div class="toolbar selection-bar" :class="!selected.length && 'idle'" :aria-hidden="!selected.length">
         <strong x-text="`${selected.length} selected`"></strong>
         <button class="btn small" type="button" @click="bulkGroups = true">Groups…</button>
         <button class="btn small" type="button" @click="openAssign()">Assign channels…</button>
