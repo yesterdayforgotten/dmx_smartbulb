@@ -37,7 +37,7 @@ DEFAULTS = {
     "input": {"backend": "uart", "port": "/dev/ttyAMA3"},
     "sender": {
         "budget_pps": 500,           # packets/s for the whole rig (clean for 50 bulbs at 10 Hz in tests)
-        "min_interval_ms": 33,       # per bulb: at most 30 commands/s (fine on firmware 1.0.15)
+        "min_interval_ms": 100,      # per bulb: at most 10 commands/s (firmware 1.0.15 handles 30)
         "max_backoff_ms": 1000,      # ceiling when a bulb stops replying
         "refresh_s": 2.0,            # re-send unconfirmed commands after this long
         "backoff_after": 3,          # consecutive lost replies before a bulb is slowed down
