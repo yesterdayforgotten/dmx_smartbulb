@@ -37,6 +37,8 @@ class Engine:
         self.loss_applied = False
         self.ip_changes = []         # (time, name, old ip, new ip), for the UI
         self.info = {}               # mac -> model, hw_ver, fw, rssi, alias, power_on (not saved)
+        from engine.board import Board
+        self.board = Board(self.patched_fixtures)
         self._last_discovery = -REDISCOVER_EVERY_S
         self._wake = asyncio.Event()
         self._stopping = False
@@ -70,8 +72,24 @@ class Engine:
             housekeeping.cancel()
             self.stop()
 
+    def patched_fixtures(self):
+        """[(label, start channel)] for every patched address, in channel order:
+        solo bulbs, and group channels (labelled with the group name)."""
+        seen = {}
+        for name, g in self.cfg["groups"].items():
+            if g["channel"] is not None:
+                seen.setdefault(g["channel"], f"Group {name}")
+        for b in self.cfg["bulbs"].values():
+            if b["channel"] is not None and not b["follow"]:
+                seen.setdefault(b["channel"], b["name"] or "bulb")
+        return sorted(((label, ch) for ch, label in seen.items()), key=lambda x: x[1])
+
     def stop(self):
         self._stopping = True
+        try:
+            self.board.release()
+        except Exception:  # noqa: BLE001 - shutting down
+            pass
         try:
             asyncio.get_running_loop().remove_reader(self.receiver.wake_fd)
         except (RuntimeError, ValueError):

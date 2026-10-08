@@ -106,7 +106,9 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
                                                    "latency_p95_ms", "queued_p95_ms", "mode", "frame_period_ms",
                                                    "delivery_spread_p95_ms", "reply_spread_p95_ms")},
                 "online": st["online"], "bulbs": bulbs, "ip_changes": st["ip_changes"][-5:],
-                "firmware": fw_jobs}
+                "firmware": fw_jobs,
+                "board": {"available": engine.board.available(), "active": engine.board.active,
+                          "show": engine.board.show, "frames": engine.board.frames, "error": engine.board.error}}
 
     # ---- session -----------------------------------------------------------
 
@@ -361,6 +363,72 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
             cfg["auth"] = keep_auth             # a backup without a password keeps the current one
         change(lambda c: (c.clear(), c.update(cfg)))
         return {"ok": True, "bulbs": len(engine.cfg["bulbs"])}
+
+    # ---- control board (DMX out through an Enttec) ---------------------------------
+
+    @app.get("/api/board")
+    def board_state(request: Request):
+        need_auth(request)
+        return {**engine.board.status(), "fixtures": engine.board.patched_values()}
+
+    def board_running():
+        try:
+            engine.board.start()
+        except RuntimeError as e:
+            raise HTTPException(409, str(e))
+
+    @app.post("/api/board/channels")
+    def board_channels(request: Request, body: dict = Body(...)):
+        need_auth(request)
+        board_running()
+        engine.board.set_channels(body.get("values") or {})
+        return {"ok": True}
+
+    @app.post("/api/board/colour")
+    def board_colour(request: Request, body: dict = Body(...)):
+        """Set fixtures to one colour: {channels: [...], h, s, v} or {channels, k, v}."""
+        need_auth(request)
+        board_running()
+        chans = [int(c) for c in body.get("channels") or []]
+        if "k" in body:
+            # Approximate white at a colour temperature with low saturation
+            # towards orange (warm) or blue (cool) - DMX input is hue/sat/bri.
+            k = float(body["k"])
+            warm = max(0.0, min(1.0, (6500 - k) / 4000))
+            h, sat = (30, round(35 * warm)) if warm > 0.15 else (220, round(15 * (1 - warm)))
+            engine.board.set_fixture_colour(chans, h, sat, int(body.get("v", 100)))
+        else:
+            engine.board.set_fixture_colour(chans, int(body.get("h", 0)), int(body.get("s", 0)), int(body.get("v", 0)))
+        return {"ok": True}
+
+    @app.post("/api/board/show")
+    def board_show(request: Request, body: dict = Body(...)):
+        need_auth(request)
+        board_running()
+        try:
+            engine.board.start_show(body.get("name"), body.get("speed", 1.0))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return {"ok": True}
+
+    @app.post("/api/board/stop-show")
+    def board_stop_show(request: Request):
+        need_auth(request)
+        engine.board.stop_show()
+        return {"ok": True}
+
+    @app.post("/api/board/blackout")
+    def board_blackout(request: Request):
+        need_auth(request)
+        board_running()
+        engine.board.blackout()
+        return {"ok": True}
+
+    @app.post("/api/board/release")
+    def board_release(request: Request):
+        need_auth(request)
+        engine.board.release()
+        return {"ok": True}
 
     # ---- firmware ----------------------------------------------------------------
 
