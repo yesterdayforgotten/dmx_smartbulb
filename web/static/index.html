@@ -431,8 +431,8 @@
       <form class="stack" @submit.prevent="saveSettings()">
         <h2>Sending to bulbs</h2>
         <section class="card row">
-          <label class="field"><span>Max commands to all bulbs combined</span>
-            <span class="with-unit"><input id="budget" type="number" min="1" max="5000" x-model.number="settings.sender.budget_pps"><span class="muted">per second</span></span>
+          <label class="field"><span>Max WiFi Bandwidth:</span>
+            <span class="with-unit"><input id="budget" type="number" min="1" max="5000" x-model.number="settings.sender.budget_pps"><span class="muted">commands/sec</span></span>
             <small class="muted">Each command is one network packet to one bulb. Caps the WiFi load from the whole rig.</small></label>
           <label class="field"><span>Max updates to any one bulb</span>
             <span class="with-unit"><input id="mininterval" type="number" min="0.5" max="100" step="0.5"
