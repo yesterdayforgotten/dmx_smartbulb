@@ -237,3 +237,19 @@ def test_dmx_can_be_ignored_and_restored(tmp_path):
             await asyncio.sleep(0.3)
             assert h.engine.dmx_enabled
     run(go())
+
+
+def test_board_show_starts_from_the_api(tmp_path, monkeypatch):
+    """Show endpoints must run in the engine loop (they create an asyncio task)."""
+    async def go():
+        async with Harness(tmp_path) as h:
+            await h.login()
+            monkeypatch.setattr(h.engine.board, "start", lambda: None)
+            r = await h.client.post("/api/board/show", json={"name": "rainbow", "speed": 2})
+            assert r.status_code == 200, r.text
+            assert h.engine.board.show == "rainbow" and h.engine.board.speed == 2
+            r = await h.client.post("/api/board/show", json={"name": "rainbow", "speed": 3})
+            assert r.status_code == 200 and h.engine.board.speed == 3
+            assert (await h.client.post("/api/board/stop-show")).status_code == 200
+            assert h.engine.board.show is None
+    run(go())

@@ -378,7 +378,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
     # ---- control board (DMX out through an Enttec) ---------------------------------
 
     @app.get("/api/board")
-    def board_state(request: Request):
+    async def board_state(request: Request):
         need_auth(request)
         return {**engine.board.status(), "fixtures": engine.board.patched_values()}
 
@@ -389,14 +389,14 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
             raise HTTPException(409, str(e))
 
     @app.post("/api/board/channels")
-    def board_channels(request: Request, body: dict = Body(...)):
+    async def board_channels(request: Request, body: dict = Body(...)):
         need_auth(request)
         board_running()
         engine.board.set_channels(body.get("values") or {})
         return {"ok": True}
 
     @app.post("/api/board/color")
-    def board_color(request: Request, body: dict = Body(...)):
+    async def board_color(request: Request, body: dict = Body(...)):
         """Set fixtures to one color: {channels: [...], h, s, v} or {channels, k, v}."""
         need_auth(request)
         board_running()
@@ -413,7 +413,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         return {"ok": True}
 
     @app.post("/api/board/show")
-    def board_show(request: Request, body: dict = Body(...)):
+    async def board_show(request: Request, body: dict = Body(...)):
         need_auth(request)
         board_running()
         try:
@@ -423,22 +423,23 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         return {"ok": True}
 
     @app.post("/api/board/stop-show")
-    def board_stop_show(request: Request):
+    async def board_stop_show(request: Request):
         need_auth(request)
         engine.board.stop_show()
         return {"ok": True}
 
     @app.post("/api/board/blackout")
-    def board_blackout(request: Request):
+    async def board_blackout(request: Request):
         need_auth(request)
         board_running()
         engine.board.blackout()
         return {"ok": True}
 
     @app.post("/api/board/release")
-    def board_release(request: Request):
+    async def board_release(request: Request):
         need_auth(request)
-        engine.board.release()
+        engine.board.stop_show()                    # the show task lives in this loop
+        await asyncio.to_thread(engine.board.release)   # joins the output thread
         return {"ok": True}
 
     # ---- firmware ----------------------------------------------------------------
