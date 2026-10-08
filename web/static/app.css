@@ -222,3 +222,5 @@ input[type=number].ch { width: 5em; }
 .hist-bar > span { display: block; height: 100%; background: var(--ok); }
 .hist-bar > span.slow { background: var(--warn); }
 .run-row { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; gap: 8px; }
+.with-unit { display: flex; align-items: center; gap: 6px; }
+.with-unit input { flex: 0 1 7em; min-width: 0; }
