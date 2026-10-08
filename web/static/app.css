@@ -168,7 +168,14 @@ input[type=number].ch { width: 5em; }
 .sheet-wheel { width: 220px; height: 220px; }
 .fixture-list { display: grid; gap: 6px; max-height: 360px; overflow: auto; padding-right: 4px; }
 .fixture-list .switch { gap: 8px; }
-.faders { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.faders { display: flex; flex-wrap: wrap; gap: 12px; }
+.faders .fader-group { width: 168px; box-sizing: border-box; }
+.faders .fader-group .row { gap: 6px; flex-wrap: nowrap; }
+.faders .fader-group strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.vfaders { display: flex; justify-content: space-around; }
+.vfader { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+/* Vertical, minimum at the bottom like a desk fader. */
+.vfader input[type=range] { writing-mode: vertical-lr; direction: rtl; width: 32px; height: 170px; margin: 0; }
 .fader-group { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: grid; gap: 6px; }
 .show-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 

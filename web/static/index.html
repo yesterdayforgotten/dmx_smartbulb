@@ -375,14 +375,15 @@
       <div x-show="boardMode === 'faders'" class="faders">
         <template x-for="f in (board ? board.fixtures : [])" :key="f.channel">
           <div class="fader-group">
-            <div class="row"><strong x-text="f.label"></strong><span class="muted mono small" x-text="'ch ' + f.channel + '–' + (f.channel + 2)"></span>
-              <span class="swatch" :style="boardSwatch(f)"></span></div>
-            <label class="field"><span x-text="'Hue ' + f.h"></span>
-              <input type="range" min="0" max="255" :value="f.h" @input="f.h = +$event.target.value; boardFader(f.channel, +$event.target.value)"></label>
-            <label class="field"><span x-text="'Saturation ' + f.s"></span>
-              <input type="range" min="0" max="255" :value="f.s" @input="f.s = +$event.target.value; boardFader(f.channel + 1, +$event.target.value)"></label>
-            <label class="field"><span x-text="'Brightness ' + f.v"></span>
-              <input type="range" min="0" max="255" :value="f.v" @input="f.v = +$event.target.value; boardFader(f.channel + 2, +$event.target.value)"></label>
+            <div class="row"><span class="swatch" :style="boardSwatch(f)"></span><strong x-text="f.label" :title="f.label"></strong></div>
+            <div class="vfaders">
+              <template x-for="[key, off, name] in [['h', 0, 'Hue'], ['s', 1, 'Sat'], ['v', 2, 'Bri']]" :key="key">
+                <label class="vfader"><span class="mono small" x-text="f[key]"></span>
+                  <input type="range" min="0" max="255" :value="f[key]" :aria-label="f.label + ' ' + name + ' (ch ' + (f.channel + off) + ')'"
+                         @input="f[key] = +$event.target.value; boardFader(f.channel + off, +$event.target.value)">
+                  <span class="small muted" x-text="name"></span><span class="mono small muted" x-text="f.channel + off"></span></label>
+              </template>
+            </div>
           </div>
         </template>
       </div>
