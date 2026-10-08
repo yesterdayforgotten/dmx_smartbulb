@@ -236,10 +236,22 @@ class Engine:
         rec.update(model=sysinfo.get("model"), hw_ver=sysinfo.get("hw_ver"), fw=sysinfo.get("sw_ver"),
                    rssi=sysinfo.get("rssi"), alias=sysinfo.get("alias"), seen=time.time())
 
+    async def ask(self, ip, command, pick, tries=3, timeout=1.0):
+        """Send `command` until pick(reply) finds our answer (not None) or tries run
+        out. While DMX is driving the bulb, its next reply is often the echo of a
+        light command rather than the answer to this one."""
+        for _ in range(tries):
+            r = await self.transport.request(ip, command, timeout=timeout)
+            if r is not None:
+                got = pick(r)
+                if got is not None:
+                    return got
+        return None
+
     async def read_power_on(self, macs=None):
         """Read each bulb's power-on default (get_default_behavior) into self.info."""
         async def one(mac, ip):
-            r = await self.transport.request(ip, kasa.INFO_CHECK, timeout=1.0)
+            r = await self.ask(ip, kasa.INFO_CHECK, lambda r: r if kasa.power_on_from_reply(r) is not None else None)
             power = kasa.power_from_reply(r) if r else None
             if power is not None:
                 rec = self.info.setdefault(mac, {})
@@ -347,10 +359,9 @@ class Engine:
             if not rt or not rt.ip:
                 results[mac] = False
                 continue
-            r = await self.transport.request(rt.ip, cmd, timeout=1.0)
-            svc = (r or {}).get(kasa.LIGHTING, {})
-            res = svc.get("set_default_behavior" if state[0] == "last" else "set_preferred_state", {})
-            results[mac] = res.get("err_code") == 0
+            key = "set_default_behavior" if state[0] == "last" else "set_preferred_state"
+            res = await self.ask(rt.ip, cmd, lambda r: r.get(kasa.LIGHTING, {}).get(key))
+            results[mac] = (res or {}).get("err_code") == 0
         await self.read_power_on([m for m, ok in results.items() if ok])
         return results
 

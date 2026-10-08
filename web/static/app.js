@@ -571,6 +571,7 @@ function app() {
       if (r) {
         const bad = Object.entries(r.results).filter(([, ok]) => !ok).length;
         this.say(bad ? `${bad} bulb(s) didn't confirm` : `Power-on default set on ${macs.length} bulb(s)`, !!bad);
+        await this.loadState();               // the Pi read the new defaults back
       }
     },
     fwJob(mac) { return this.live && this.live.firmware && this.live.firmware[mac]; },
