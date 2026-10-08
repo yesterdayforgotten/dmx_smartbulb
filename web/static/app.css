@@ -241,4 +241,5 @@ input[type=number].ch { width: 5em; }
 .danger-btn { background: var(--bad); border-color: var(--bad); color: #fff; }
 .btn.danger { color: var(--bad); }
 .small-select { min-height: 30px; height: 30px; padding: 0 6px; font-size: 13px; width: auto; }
-.mode-tag { font-size: 10px; font-weight: 700; letter-spacing: .04em; padding: 1px 4px; border-radius: 4px; border: 1px solid var(--accent); color: var(--accent); }
+.mode-tag { font-size: 10px; font-weight: 700; letter-spacing: .04em; padding: 1px 4px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); min-width: 3.4em; text-align: center; box-sizing: border-box; }
+.mode-tag.hsic { border-color: var(--accent); color: var(--accent); }
