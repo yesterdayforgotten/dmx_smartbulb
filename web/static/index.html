@@ -380,7 +380,7 @@
             <template x-for="f in (board ? board.fixtures : [])" :key="f.channel">
               <button type="button" class="fixture-tile" :aria-pressed="boardSel.includes(f.channel)" @click="toggleBoardSel(f.channel)"
                       :title="f.label + ' (ch ' + f.channel + ')'">
-                <span class="swatch" :style="boardSwatch(f)"></span>
+                <span class="swatch" :style="fixtureSwatch(f)"></span>
                 <span class="fixture-name" x-text="f.label"></span>
                 <span class="muted mono small" x-text="'ch ' + f.channel"></span>
               </button>
@@ -394,7 +394,7 @@
       <div x-show="boardMode === 'faders'" class="faders">
         <template x-for="f in (board ? board.fixtures : [])" :key="f.channel">
           <div class="fader-group" :class="f.size === 4 && 'wide'">
-            <div class="row"><span class="swatch" :style="boardSwatch(f)"></span><strong x-text="f.label" :title="f.label"></strong></div>
+            <div class="row"><span class="swatch" :style="fixtureSwatch(f)"></span><strong x-text="f.label" :title="f.label"></strong></div>
             <div class="vfaders">
               <template x-for="[key, off, name] in (f.size === 4 ? [['h', 0, 'Hue'], ['s', 1, 'Saturation'], ['v', 2, 'Intensity'], ['c', 3, 'Color temp']] : [['h', 0, 'Hue'], ['s', 1, 'Saturation'], ['v', 2, 'Intensity']])" :key="key">
                 <label class="vfader"><span class="mono small" x-text="f[key]"></span>

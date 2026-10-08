@@ -679,6 +679,16 @@ function app() {
       const i = this.boardSel.indexOf(ch);
       if (i >= 0) this.boardSel.splice(i, 1); else this.boardSel.push(ch);
     },
+    fixtureBulbs(ch) {
+      // Bulbs listening to the address that starts at ch: solo bulbs on it, and
+      // followers of a group whose shared channel it is.
+      return Object.entries(this.cfg.bulbs).filter(([, b]) => b.follow
+        ? (this.cfg.groups[b.follow] || {}).channel === ch : b.channel === ch).map(([mac]) => mac);
+    },
+    fixtureSwatch(f) {
+      const mac = this.fixtureBulbs(f.channel).find((m) => this.liveOf(m).state) || null;
+      return mac ? this.lampStyle(mac, true) : this.boardSwatch(f);
+    },
     boardSwatch(f) {
       const h = Math.round(f.h / 255 * 360), sat = Math.round(f.s / 255 * 100), v = Math.round(f.v / 255 * 100);
       return this.cssFromState({ h, s: sat, v }, true);
