@@ -98,6 +98,24 @@ SYSINFO = {"system": {"get_sysinfo": None}}
 # check quiet bulbs are still online without wasting airtime.
 LIGHT_STATE = {LIGHTING: {"get_light_state": {}}}
 DEFAULT_BEHAVIOR = {LIGHTING: {"get_default_behavior": {}}}
+# Several methods ride in one datagram and are all answered in one reply, so
+# the power reading costs no extra packets.
+IDLE_CHECK = {LIGHTING: {"get_light_state": {}, "get_light_parameters": {}}}
+INFO_CHECK = {LIGHTING: {"get_default_behavior": {}, "get_light_parameters": {}}}
+LAST_STATE_ON = {LIGHTING: {"set_default_behavior": {"soft_on": {"mode": "last_status"},
+                                                     "hard_on": {"mode": "last_status"}}}}
+# WiFi (WMM) priority for our packets, as IP TOS bytes. Broadcom APs map the
+# top three DSCP bits to an access category: CS5 -> video, CS6 -> voice.
+WIFI_PRIORITY_TOS = {"off": 0x00, "video": 0xA0, "voice": 0xC0}
+
+
+def power_from_reply(reply):
+    """(milliwatts, lumens) from a reply that includes get_light_parameters, or None."""
+    try:
+        p = reply[LIGHTING]["get_light_parameters"]
+        return p["energy_usage_milliwatts"], p.get("brightness_lumens")
+    except (KeyError, TypeError):
+        return None
 
 
 def power_on_from_reply(reply):
@@ -184,6 +202,12 @@ class KasaTransport(asyncio.DatagramProtocol):
             if fut in waiters:
                 waiters.remove(fut)
             return None
+
+    def set_tos(self, tos):
+        """Mark our packets with this IP TOS byte (WiFi priority; 0 = normal)."""
+        sock = self.transport.get_extra_info("socket") if self.transport else None
+        if sock is not None:
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, tos)
 
     def close(self):
         if self.transport:

@@ -146,3 +146,42 @@ def test_bulb_info_and_power_on_are_read(tmp_path):
         finally:
             fleet.stop()
     asyncio.run(go())
+
+
+def test_power_draw_colour_and_last_state_power_on(tmp_path):
+    async def go():
+        fleet = await FakeBulbFleet(2, port=PORT).start()
+        try:
+            engine = make_engine(tmp_path, fleet, recording(tmp_path))
+            await engine.start()
+            engine.receiver.stop()
+            mac0, mac1 = fleet.bulbs[0].mac, fleet.bulbs[1].mac
+            engine._poll_quiet_bulbs(time.monotonic())        # the idle check carries the power reading
+            await asyncio.sleep(0.2)
+            assert engine.info[mac0]["power_mw"] > 0 and engine.info[mac0]["lumens"] is not None
+            assert all(b.commands == 0 for b in fleet.bulbs)  # still nothing changed on the bulbs
+            ok = await engine.set_power_on([mac0], ("hsv", 240, 100, 50))
+            assert ok[mac0] and engine.info[mac0]["power_on"] == {"mode": "preset", "h": 240, "s": 100, "k": 0, "v": 50}
+            ok = await engine.set_power_on([mac1], ("last",))
+            assert ok[mac1] and engine.info[mac1]["power_on"] == {"mode": "last"}
+            engine.stop()
+        finally:
+            fleet.stop()
+    asyncio.run(go())
+
+
+def test_wifi_priority_marks_packets(tmp_path):
+    import socket as so
+    async def go():
+        fleet = await FakeBulbFleet(1, port=PORT).start()
+        try:
+            engine = make_engine(tmp_path, fleet, recording(tmp_path))
+            await engine.start()
+            sock = engine.transport.transport.get_extra_info("socket")
+            assert sock.getsockopt(so.IPPROTO_IP, so.IP_TOS) == 0
+            engine.update_config(lambda c: c["sender"].update(wifi_priority="voice"))
+            assert sock.getsockopt(so.IPPROTO_IP, so.IP_TOS) == 0xC0
+            engine.stop()
+        finally:
+            fleet.stop()
+    asyncio.run(go())

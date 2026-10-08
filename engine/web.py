@@ -329,8 +329,11 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
 
     @app.post("/api/power-on")
     async def power_on(request: Request, body: dict = Body(...)):
+        """state: {"k", "v"} (white), {"h", "s", "v"} (colour) or {"mode": "last"}."""
         need_auth(request)
-        results = await engine.set_power_on(body.get("macs") or [], to_state(body.get("state") or {}))
+        st = body.get("state") or {}
+        state = ("last",) if st.get("mode") == "last" else to_state(st)
+        results = await engine.set_power_on(body.get("macs") or [], state)
         return {"results": results}
 
     # ---- settings, backup ------------------------------------------------------

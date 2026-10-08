@@ -49,10 +49,25 @@ class Engine:
     async def start(self):
         self.transport = await kasa.KasaTransport.create(port=self.cfg["kasa_port"])
         self.sender = Sender(self.cfg, self.transport.send)
-        self.transport.on_reply = self.sender.on_reply
+        self.transport.on_reply = self._on_reply
+        self._apply_wifi_priority()
         self.receiver.start()
         asyncio.get_running_loop().add_reader(self.receiver.wake_fd, self._on_wake)
         log.info("engine started: %d bulbs, input %s", len(self.cfg["bulbs"]), self.receiver.backend)
+
+    def _on_reply(self, ip, reply, t):
+        self.sender.on_reply(ip, reply, t)
+        power = kasa.power_from_reply(reply)
+        if power is not None:
+            rt = self.sender.by_ip.get(ip)
+            if rt is not None:
+                rec = self.info.setdefault(rt.mac, {})
+                rec["power_mw"], rec["lumens"] = power
+                rec["power_t"] = time.time()
+
+    def _apply_wifi_priority(self):
+        if self.transport:
+            self.transport.set_tos(kasa.WIFI_PRIORITY_TOS[self.cfg["sender"]["wifi_priority"]])
 
     def _on_wake(self):
         self.receiver.drain()
@@ -180,7 +195,7 @@ class Engine:
             quiet = rt.last_reply is None or now - rt.last_reply > period
             if quiet and now - rt.last_send > period and now - rt.last_poll > period:
                 rt.last_poll = now
-                self.transport.send(rt.ip, kasa.LIGHT_STATE)
+                self.transport.send(rt.ip, kasa.IDLE_CHECK)
 
     async def rediscover(self):
         """Find bulbs by MAC and update any whose IP changed. Saves the config."""
@@ -218,7 +233,12 @@ class Engine:
     async def read_power_on(self, macs=None):
         """Read each bulb's power-on default (get_default_behavior) into self.info."""
         async def one(mac, ip):
-            r = await self.transport.request(ip, kasa.DEFAULT_BEHAVIOR, timeout=1.0)
+            r = await self.transport.request(ip, kasa.INFO_CHECK, timeout=1.0)
+            power = kasa.power_from_reply(r) if r else None
+            if power is not None:
+                rec = self.info.setdefault(mac, {})
+                rec["power_mw"], rec["lumens"] = power
+                rec["power_t"] = time.time()
             po = kasa.power_on_from_reply(r) if r else None
             if po is not None:
                 self.info.setdefault(mac, {})["power_on"] = po
@@ -237,6 +257,7 @@ class Engine:
         change(new)
         self.cfg = self.store.save(new)
         self.sender.apply_config(self.cfg)
+        self._apply_wifi_priority()
         return self.cfg
 
     def set_dmx_enabled(self, enabled):
@@ -307,8 +328,11 @@ class Engine:
         return out
 
     async def set_power_on(self, macs, state):
-        """Set each bulb's power-on default; returns {mac: ok}."""
-        if state[0] == "temp":
+        """Set each bulb's power-on default; returns {mac: ok}. state is
+        ("temp", k, v), ("hsv", h, s, v) or ("last",) for "come back as it was"."""
+        if state[0] == "last":
+            cmd = kasa.LAST_STATE_ON
+        elif state[0] == "temp":
             cmd = kasa.preferred_state(0, 0, state[2], state[1])
         else:
             cmd = kasa.preferred_state(state[1], state[2], state[3], 0)
@@ -319,7 +343,8 @@ class Engine:
                 results[mac] = False
                 continue
             r = await self.transport.request(rt.ip, cmd, timeout=1.0)
-            res = (r or {}).get(kasa.LIGHTING, {}).get("set_preferred_state", {})
+            svc = (r or {}).get(kasa.LIGHTING, {})
+            res = svc.get("set_default_behavior" if state[0] == "last" else "set_preferred_state", {})
             results[mac] = res.get("err_code") == 0
         await self.read_power_on([m for m, ok in results.items() if ok])
         return results

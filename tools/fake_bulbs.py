@@ -95,14 +95,18 @@ class FakeBulb(asyncio.DatagramProtocol):
             reply = dict(self.state)
             reply["err_code"] = 0
             out["transition_light_state"] = reply
+        if "get_light_parameters" in svc:
+            v = self.state["brightness"] if self.state["on_off"] else 0
+            out["get_light_parameters"] = {"energy_usage_milliwatts": 300 + 66 * v, "brightness_lumens": 8 * v, "err_code": 0}
         if "get_default_behavior" in svc:
             pref = self.preferred or {"hue": 0, "saturation": 0, "color_temp": 2700, "brightness": 100}
-            out["get_default_behavior"] = {
-                "soft_on": {"mode": "last_status"},
-                "hard_on": {"mode": "customize_preset", "index": 0,
-                            **{k: pref.get(k, 0) for k in ("hue", "saturation", "color_temp", "brightness")}},
-                "err_code": 0}
+            hard = ({"mode": "last_status"} if pref.get("last") else
+                    {"mode": "customize_preset", "index": 0,
+                     **{k: pref.get(k, 0) for k in ("hue", "saturation", "color_temp", "brightness")}})
+            out["get_default_behavior"] = {"soft_on": {"mode": "last_status"}, "hard_on": hard, "err_code": 0}
         if "set_default_behavior" in svc:
+            if svc["set_default_behavior"].get("hard_on", {}).get("mode") == "last_status":
+                self.preferred = {"last": True}
             out["set_default_behavior"] = {"err_code": 0}
         if "set_preferred_state" in svc:
             self.preferred = svc["set_preferred_state"]
@@ -216,11 +220,15 @@ async def main():
     ap.add_argument("--latency", type=float, default=5.0, help="reply latency in ms (+-30%%)")
     ap.add_argument("--loss", type=float, default=0.0, help="percent of packets dropped")
     ap.add_argument("--mirror", metavar="HOST[:PORT]", help="also send a copy of every packet there (default port 9)")
+    ap.add_argument("--mirror-tos", type=lambda x: int(x, 0), default=0,
+                    help="IP TOS byte for mirrored packets (0xC0 = WiFi voice), to match the engine's setting")
     args = ap.parse_args()
     if args.mirror:
         import socket
         MIRROR["sock"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         MIRROR["sock"].setblocking(False)
+        if args.mirror_tos:
+            MIRROR["sock"].setsockopt(socket.IPPROTO_IP, socket.IP_TOS, args.mirror_tos)
         host, _, port = args.mirror.partition(":")
         MIRROR["addr"] = (host, int(port or 9))
     fleet = await FakeBulbFleet(args.count, args.base_ip, args.port, args.latency, args.loss / 100).start()

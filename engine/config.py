@@ -42,6 +42,7 @@ DEFAULTS = {
         "refresh_s": 2.0,            # re-send unconfirmed commands after this long
         "backoff_after": 3,          # consecutive lost replies before a bulb is slowed down
         "idle_check_s": 3.0,         # status-check bulbs not heard from for this long
+        "wifi_priority": "off",      # off | video | voice: WiFi (WMM) priority of our packets
         "adaptive_transition": False,  # experimental: fade over the send interval
         "fixed_transition_ms": 30,   # fade time per update (the old app's 30 ms)
         "snap_threshold": 0.15,      # changes larger than this fraction snap (0 ms)
@@ -171,6 +172,8 @@ def validate(raw):
     _num(problems, "snap threshold", s["snap_threshold"], 0, 1)
     if not isinstance(s["adaptive_transition"], bool):
         problems.append("adaptive transition must be true or false")
+    if s["wifi_priority"] not in ("off", "video", "voice"):
+        problems.append("WiFi priority must be off, video or voice")
     if s["mode"] not in ("priority", "sync"):
         problems.append("send mode must be 'priority' or 'sync'")
     if s["curve"] not in CURVES:
