@@ -11,3 +11,4 @@ env/*
 .vscode/
 .venv-test/
 __pycache__/
+.venv/

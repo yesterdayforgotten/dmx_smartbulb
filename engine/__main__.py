@@ -2,6 +2,7 @@
 
     run                 run the engine (DMX in, bulbs out)
     import-django-db    copy the bulbs from the old Django app's db.sqlite3
+    firmware fetch      download and verify the bulb firmware in firmware/manifest.json
 """
 
 import argparse
@@ -35,23 +36,37 @@ def cmd_run(args):
 
 def cmd_import_django_db(args):
     """Old table: config_bulb(name, ip_addr, channel, enabled). Bulbs are keyed
-    by MAC now, so each one is asked for its sysinfo; bulbs that don't answer
-    are listed and left out."""
+    by MAC now. Bulbs are discovered (broadcast plus their old IPs) and matched
+    to old rows by IP, or, when the IP has changed, by the last four hex digits
+    of the MAC that the factory names end in ("TP-LINK_Smart Bulb_A86D")."""
     rows = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True).execute(
         "SELECT name, ip_addr, channel, enabled FROM config_bulb ORDER BY ip_addr").fetchall()
     store = ConfigStore(args.config)
     cfg = store.load()
-    found = asyncio.run(kasa.discover([r[1] for r in rows], port=cfg["kasa_port"], timeout=2.0))
+    targets = ["255.255.255.255"] + [r[1] for r in rows]
+    found = asyncio.run(kasa.discover(targets, port=cfg["kasa_port"], timeout=3.0))
+    by_ip = {ip: info for ip, info in found.items()}
+    by_suffix = {}
+    for ip, info in found.items():
+        mac = kasa.sysinfo_mac(info)
+        if mac:
+            by_suffix.setdefault(mac[-4:], []).append((ip, info))
     added, missing = 0, []
     for name, ip, channel, enabled in rows:
-        info = found.get(ip)
-        mac = kasa.sysinfo_mac(info) if info else None
-        if not mac:
+        hit = (ip, by_ip[ip]) if ip in by_ip else None
+        suffix = name.strip()[-4:].upper()
+        if hit is None and len(by_suffix.get(suffix, [])) == 1:
+            hit = by_suffix[suffix][0]
+        if hit is None:
             missing.append(f"{name} ({ip})")
             continue
-        cfg["bulbs"][mac] = {"name": name, "ip": ip,
+        new_ip, info = hit
+        mac = kasa.sysinfo_mac(info)
+        cfg["bulbs"][mac] = {"name": name, "ip": new_ip,
                              "channel": channel if 1 <= channel <= 510 else None,
                              "dmx": bool(enabled)}
+        moved = f" (now {new_ip})" if new_ip != ip else ""
+        print(f"  {name}: {mac}, channel {channel}{moved}")
         added += 1
     try:
         store.save(cfg)
@@ -59,7 +74,20 @@ def cmd_import_django_db(args):
         sys.exit("not saved: " + "; ".join(e.problems))
     print(f"imported {added} of {len(rows)} bulbs into {args.config}")
     if missing:
-        print("not answering (add them later from discovery):", ", ".join(missing))
+        print(f"{len(missing)} not found on the network (add them later from discovery):", ", ".join(missing))
+
+
+def cmd_firmware(args):
+    from engine import firmware
+    if args.action == "fetch":
+        ok, failed = firmware.fetch(args.dir)
+        if failed:
+            sys.exit(f"{len(failed)} image(s) failed")
+    else:
+        imgs = firmware.cached(args.dir)
+        for img in firmware.load_manifest():
+            mark = "cached" if img in imgs else "missing"
+            print(f"{img['model']} hw {img['hw_ver']}  {img['version']}  {mark}")
 
 
 def main():
@@ -79,6 +107,11 @@ def main():
     imp = sub.add_parser("import-django-db", help="import bulbs from the old app")
     imp.add_argument("db", nargs="?", default="/dmx_smartbulb/db.sqlite3")
     imp.set_defaults(func=cmd_import_django_db)
+
+    fw = sub.add_parser("firmware", help="bulb firmware kept on the Pi")
+    fw.add_argument("action", choices=("fetch", "list"))
+    fw.add_argument("--dir", default="/var/lib/dmx_smartbulb/firmware", help="where to keep the images")
+    fw.set_defaults(func=cmd_firmware)
 
     args = ap.parse_args()
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,

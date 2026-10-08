@@ -133,3 +133,10 @@ def test_save_rejects_invalid(tmp_path):
     with pytest.raises(ConfigError):
         store.save({"bulbs": {A: {"channel": 999}}})
     assert not (tmp_path / "config.json").exists()
+
+
+def test_firmware_manifest_is_consistent():
+    from engine import firmware
+    imgs = firmware.load_manifest()
+    assert imgs and all(len(i["sha256"]) == 64 and i["size"] > 0 and i["url"].startswith("http") for i in imgs)
+    assert len({(i["model"], i["hw_ver"]) for i in imgs}) == len(imgs)   # one image per model/hw

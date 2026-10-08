@@ -1,0 +1,15 @@
+{
+  "_comment": "Bulb firmware the Pi can install without internet. Only this manifest is in the repo; `python -m engine firmware fetch` downloads each image from TP-Link, checks its sha256 and keeps it on the Pi.",
+  "images": [
+    {
+      "model": "KL135(US)",
+      "hw_ver": "1.0",
+      "version": "1.0.15 Build 240429 Rel.154143",
+      "file": "KL135_US_1.0.15_Build_240429.bin",
+      "url": "http://download.tplinkcloud.com/firmware/KLM200_UN_1.0.15_Build_240429_Rel.154143_2024-04-29_15.44.05_1719540438742.bin",
+      "size": 737152,
+      "sha256": "926f780f28aeeca30d603a5d22ef39c413b7895fbf94c2a972e5fb7911c4382c",
+      "notes": "Fixes 2-3 s freezes seen on 1.0.10 at 12 Hz and up. Keeps the legacy local protocol."
+    }
+  ]
+}
