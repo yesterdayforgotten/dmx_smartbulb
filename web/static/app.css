@@ -153,7 +153,7 @@ input[type=number].ch { width: 5em; }
 .menu-cell { position: relative; text-align: right; }
 .kebab { background: none; border: 1px solid transparent; border-radius: 6px; color: var(--muted); font-size: 20px; line-height: 1; width: 34px; height: 34px; cursor: pointer; }
 .kebab:hover, .kebab[aria-expanded="true"] { border-color: var(--line); color: var(--fg); }
-.menu { position: absolute; right: 0; top: 38px; z-index: 10; min-width: 210px; background: var(--panel-2); border: 1px solid var(--line);
+.menu { position: fixed; z-index: 50; width: 220px; box-sizing: border-box; background: var(--panel-2); border: 1px solid var(--line);
         border-radius: 10px; padding: 6px; display: grid; gap: 2px; box-shadow: 0 8px 24px rgba(0,0,0,.4); text-align: left; }
 .menu button { background: none; border: 0; text-align: left; padding: 8px 10px; border-radius: 6px; cursor: pointer; color: var(--fg); }
 .menu button:hover { background: var(--panel); }
@@ -195,3 +195,9 @@ input[type=number].ch { width: 5em; }
 .sdot.on { background: var(--ok); } .sdot.slow { background: var(--warn); } .sdot.off { background: var(--bad); }
 .badge-up { margin-left: 4px; font-size: 10px; padding: 0 4px; border-radius: 4px; background: var(--warn); color: #1a1406; }
 .hue-range { background: linear-gradient(90deg, red, yellow, lime, cyan, blue, magenta, red); border-radius: 6px; height: 10px; }
+
+.assign-preview { display: grid; gap: 4px; max-height: 300px; overflow: auto; }
+.assign-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.menu-cell { white-space: nowrap; }
+.bulbs-table.slim .id-btn { min-height: 24px; height: 24px; padding: 0 8px; font-size: 12px; }
+.menu-info.stats { display: grid; gap: 1px; border-top: 0; }

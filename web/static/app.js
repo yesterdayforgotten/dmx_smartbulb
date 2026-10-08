@@ -28,8 +28,8 @@ function app() {
     live: null, fps: 0, _frames: null, _framesT: 0, ws: null, _wsRetry: 1000,
     view: 'map', selectMode: false, selected: [], editLayout: false, sheet: null,
     found: null, discovering: false, newGroup: '', lookName: '',
-    info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, groupPopup: null, groupSheet: null,
-    dmxPopup: false,
+    info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, menuPos: { x: 0, y: 0 }, groupPopup: null, groupSheet: null,
+    dmxPopup: false, assign: null,
     board: null, boardMode: 'colour', boardSel: [], boardColour: { h: 30, s: 80, v: 70 }, boardTemp: 3200,
     boardColourMode: 'hsv', boardSpeed: 1, _boardTimers: {},
     color: { h: 30, s: 80, v: 70 }, temp: 3200, mode: 'hsv', _sendTimer: null,
@@ -394,9 +394,52 @@ function app() {
       this.selected = this.selected.filter((m) => m !== b.mac);
       await this.loadState();
     },
+    bulbStats(mac) {
+      const l = this.liveOf(mac), i = this.info[mac] || {};
+      const pct = l.sends ? (100 * Math.min(l.replies, l.sends) / l.sends).toFixed(1) + '%' : '–';
+      const out = [
+        ['Reply time', l.rtt != null ? l.rtt + ' ms' : '–'],
+        ['Replies', l.sends ? `${pct} of ${l.sends}` : '–'],
+        ['Missed replies', l.misses ?? '–'],
+        ['Updates every', l.interval != null ? l.interval + ' ms' + (l.backoff ? ' (slowed)' : '') : '–'],
+        ['WiFi signal', i.rssi != null ? i.rssi + ' dBm' : '–'],
+        ['Power', i.power_mw != null ? (i.power_mw / 1000).toFixed(1) + ' W' : '–'],
+        ['IP', (this.cfg.bulbs[mac] || {}).ip || '–'],
+      ];
+      return out;
+    },
+    openMenu(b, el) {
+      if (this.menuFor === b.mac) { this.menuFor = null; return; }
+      // Fixed position from the button, flipped up when it would run off the bottom.
+      const r = el.getBoundingClientRect(), w = 220, h = 330;
+      const x = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
+      const y = r.bottom + h + 8 > window.innerHeight ? Math.max(8, r.top - h - 4) : r.bottom + 4;
+      this.menuPos = { x, y };
+      this.menuFor = b.mac;
+    },
+    openAssign() { this.assign = { start: this.nextFree || 1 }; },
+    assignPreview() {
+      // Mirror the server: skip channels used by bulbs that aren't being reassigned, and by groups.
+      const used = new Set();
+      const mark = (ch) => { if (ch) for (let c = ch; c < ch + 3; c++) used.add(c); };
+      for (const [mac, b] of Object.entries(this.cfg.bulbs)) {
+        if (this.selected.includes(mac)) continue;
+        mark(b.follow ? (this.cfg.groups[b.follow] || {}).channel : b.channel);
+      }
+      for (const g of Object.values(this.cfg.groups)) mark(g.channel);
+      let ch = Math.max(1, this.assign ? this.assign.start || 1 : 1);
+      return this.bulbList().filter((b) => this.selected.includes(b.mac)).map((b) => {
+        while (ch <= 510 && (used.has(ch) || used.has(ch + 1) || used.has(ch + 2))) ch++;
+        const row = { mac: b.mac, name: b.name, ch: ch <= 510 ? ch : null };
+        if (row.ch) { mark(ch); ch += 3; }
+        return row;
+      });
+    },
     async autoAssign() {
-      const start = this.nextFree || 1;
-      await this.act(this.api('POST', '/api/bulbs/auto-assign', { macs: this.selected, start }), `Assigned from channel ${start}`);
+      const start = this.assign ? this.assign.start || 1 : this.nextFree || 1;
+      const order = this.bulbList().filter((b) => this.selected.includes(b.mac)).map((b) => b.mac);
+      const r = await this.act(this.api('POST', '/api/bulbs/auto-assign', { macs: order, start }), `Channels assigned from ${start}`);
+      if (r) this.assign = null;
       await this.loadState();
     },
     async identify(mac) { await this.act(this.api('POST', `/api/bulbs/${mac}/identify`), 'Blinking…'); },

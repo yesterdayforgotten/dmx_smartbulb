@@ -9,7 +9,7 @@
 <script src="app.js"></script>
 <script defer src="vendor/alpine.min.js"></script>
 </head>
-<body x-data="app()" x-init="init()" @keydown.escape.window="closeSheet(); groupPopup = null; menuFor = null; dmxPopup = false">
+<body x-data="app()" x-init="init()" @keydown.escape.window="closeSheet(); groupPopup = null; menuFor = null; dmxPopup = false; assign = null">
 
 <!-- ================= first run / login ================= -->
 <template x-if="loaded && !session.authenticated">
@@ -186,7 +186,8 @@
           <option value="manual">Manual / look</option>
         </select>
         <button class="btn small primary" type="button" @click="discover()" :disabled="discovering" x-text="discovering ? 'Searching…' : 'Find bulbs'"></button>
-        <button class="btn small" type="button" x-show="selected.length" @click="autoAssign()" x-text="`Auto-assign ${selected.length} from ${nextFree || '?'}`"></button>
+        <button class="btn small" type="button" x-show="selected.length" @click="openAssign()"
+                x-text="`Assign channels to ${selected.length} bulb${selected.length === 1 ? '' : 's'}…`"></button>
       </div>
 
       <template x-if="found">
@@ -234,19 +235,14 @@
                 <td><button type="button" class="chip" @click="groupPopup = b.mac" x-text="b.groups.length ? b.groups.length + (b.groups.length === 1 ? ' group' : ' groups') : 'None'"
                             :title="b.groups.join(', ')"></button></td>
                 <td class="status-cell">
-                  <span class="status" :class="isOnline(b.mac) ? 'on' : 'off'" x-text="isOnline(b.mac) ? (liveOf(b.mac).backoff ? 'slowed' : 'online') : 'offline'"></span>
+                  <span class="status" :class="isOnline(b.mac) ? 'on' : 'off'" x-text="isOnline(b.mac) ? (liveOf(b.mac).backoff ? 'slowed' : 'online') : 'offline'"
+                        :title="liveOf(b.mac).backoff ? 'Missed several replies in a row, so updates to this bulb are spaced out (now every ' + liveOf(b.mac).interval + ' ms) until it answers again' : ''"></span>
                   <span class="muted small mono" x-show="liveOf(b.mac).rtt != null" x-text="liveOf(b.mac).rtt + ' ms'"></span>
                   <span class="small mono" :class="fwUpdatable(b.mac) ? 'warn-text' : 'muted'" x-text="fwText(b.mac)"></span>
                 </td>
                 <td class="menu-cell">
-                  <button type="button" class="kebab" @click="menuFor = menuFor === b.mac ? null : b.mac" :aria-label="'More for ' + b.name" :aria-expanded="menuFor === b.mac">⋮</button>
-                  <div class="menu" x-show="menuFor === b.mac" x-cloak @click.outside="menuFor = null">
-                    <button type="button" @click="menuFor = null; identify(b.mac)">Identify</button>
-                    <div class="menu-info"><span class="muted">Power-on default</span><br><span x-text="powerOnText(b.mac)"></span></div>
-                    <button type="button" x-show="fwImages.length" @click="menuFor = null; updateFirmware(b.mac)"
-                            x-text="fwUpdatable(b.mac) ? 'Update firmware' : 'Re-install firmware'"></button>
-                    <button type="button" class="danger" @click="menuFor = null; removeBulb(b)">Remove</button>
-                  </div>
+                  <button type="button" class="btn small id-btn" @click="identify(b.mac)" :title="'Blink ' + b.name">Identify</button>
+                  <button type="button" class="kebab" @click.stop="openMenu(b, $el)" :aria-label="'More for ' + b.name" :aria-expanded="menuFor === b.mac">⋮</button>
                 </td>
               </tr>
             </template>
@@ -487,6 +483,44 @@
           <dt>Receiver restarts</dt><dd x-text="live.input.restarts"></dd>
           <dt>When DMX stops</dt><dd x-text="({hold: 'hold the last state', look: 'recall a look', blackout: 'blackout'})[cfg.dmx_loss.mode] + (cfg.dmx_loss.mode !== 'hold' ? ' after ' + cfg.dmx_loss.after_s + ' s' : '')"></dd>
         </dl>
+      </div>
+    </div>
+  </template>
+
+  <!-- ================= bulb row menu (outside the table so it is never clipped) ================= -->
+  <template x-if="menuFor && cfg.bulbs[menuFor]">
+    <div class="menu" :style="`left:${menuPos.x}px; top:${menuPos.y}px`" @click.outside="menuFor = null"
+         @scroll.window="menuFor = null" @resize.window="menuFor = null">
+      <div class="menu-info stats">
+        <template x-for="[k, v] in bulbStats(menuFor)" :key="k">
+          <div class="row nowrap"><span class="muted" x-text="k"></span><span style="flex:1"></span><span class="mono" x-text="v"></span></div>
+        </template>
+      </div>
+      <div class="menu-info"><span class="muted">Power-on default</span><br><span x-text="powerOnText(menuFor)"></span></div>
+      <button type="button" x-show="fwImages.length" @click="const m = menuFor; menuFor = null; updateFirmware(m)"
+              x-text="fwUpdatable(menuFor) ? 'Update firmware' : 'Re-install firmware'"></button>
+      <button type="button" class="danger" @click="const b = bulbList().find(x => x.mac === menuFor); menuFor = null; removeBulb(b)">Remove</button>
+    </div>
+  </template>
+
+  <!-- ================= assign channels ================= -->
+  <template x-if="assign">
+    <div class="backdrop" @click.self="assign = null">
+      <div class="sheet stack" role="dialog" aria-modal="true" aria-label="Assign DMX channels">
+        <div class="row"><strong>Assign DMX channels</strong><span style="flex:1"></span>
+          <button class="btn small" type="button" @click="assign = null">Cancel</button></div>
+        <p class="muted small" style="margin:0">Each bulb takes 3 channels (hue, saturation, brightness). The selected bulbs get
+          consecutive addresses from the start channel, skipping channels other bulbs and groups already use, and are set to Solo.</p>
+        <label class="field" style="max-width:200px"><span>Start at channel</span>
+          <input id="assignstart" type="number" min="1" max="510" x-model.number="assign.start"></label>
+        <div class="assign-preview">
+          <template x-for="row in assignPreview()" :key="row.mac">
+            <div class="row nowrap"><span x-text="row.name" class="assign-name"></span>
+              <span class="mono" :class="row.ch ? '' : 'warn-text'" x-text="row.ch ? 'ch ' + row.ch + '–' + (row.ch + 2) : 'no room'"></span></div>
+          </template>
+        </div>
+        <div class="row"><button class="btn primary" type="button" @click="autoAssign()" :disabled="assignPreview().some(r => !r.ch)"
+                 x-text="`Assign ${selected.length} bulb${selected.length === 1 ? '' : 's'}`"></button></div>
       </div>
     </div>
   </template>
