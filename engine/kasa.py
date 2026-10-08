@@ -97,6 +97,20 @@ SYSINFO = {"system": {"get_sysinfo": None}}
 # Light state only: a ~160-byte reply instead of get_sysinfo's ~1 KB. Used to
 # check quiet bulbs are still online without wasting airtime.
 LIGHT_STATE = {LIGHTING: {"get_light_state": {}}}
+DEFAULT_BEHAVIOR = {LIGHTING: {"get_default_behavior": {}}}
+
+
+def power_on_from_reply(reply):
+    """Summarise a get_default_behavior reply's power-on (hard_on) setting as
+    {"mode": "last"} or {"mode": "preset", "h", "s", "k", "v"}; None if absent."""
+    try:
+        hard = reply[LIGHTING]["get_default_behavior"]["hard_on"]
+    except (KeyError, TypeError):
+        return None
+    if hard.get("mode") == "last_status":
+        return {"mode": "last"}
+    return {"mode": "preset", "h": hard.get("hue", 0), "s": hard.get("saturation", 0),
+            "k": hard.get("color_temp", 0), "v": hard.get("brightness", 0)}
 
 
 def sysinfo_mac(info):

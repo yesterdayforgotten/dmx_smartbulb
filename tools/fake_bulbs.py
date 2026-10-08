@@ -95,6 +95,13 @@ class FakeBulb(asyncio.DatagramProtocol):
             reply = dict(self.state)
             reply["err_code"] = 0
             out["transition_light_state"] = reply
+        if "get_default_behavior" in svc:
+            pref = self.preferred or {"hue": 0, "saturation": 0, "color_temp": 2700, "brightness": 100}
+            out["get_default_behavior"] = {
+                "soft_on": {"mode": "last_status"},
+                "hard_on": {"mode": "customize_preset", "index": 0,
+                            **{k: pref.get(k, 0) for k in ("hue", "saturation", "color_temp", "brightness")}},
+                "err_code": 0}
         if "set_default_behavior" in svc:
             out["set_default_behavior"] = {"err_code": 0}
         if "set_preferred_state" in svc:

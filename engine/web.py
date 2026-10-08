@@ -164,6 +164,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         need_auth(request)
         return {"config": public_config(engine.cfg), "warnings": patch_conflicts(engine.cfg),
                 "next_free_channel": next_free_channel(engine.cfg), "live": live_payload(),
+                "info": engine.info,
                 "firmware_images": firmware.cached(firmware_dir)}
 
     @app.websocket("/api/live")
@@ -328,7 +329,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
     @app.put("/api/settings")
     def settings(request: Request, body: dict = Body(...)):
         need_auth(request)
-        allowed = {"sender", "dmx_loss", "input", "network"}
+        allowed = {"sender", "dmx_loss", "input", "network", "identify"}
         if set(body) - allowed:
             raise HTTPException(400, f"settings can only change {', '.join(sorted(allowed))}")
         old_input = dict(engine.cfg["input"])

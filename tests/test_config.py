@@ -17,7 +17,7 @@ def bulbs(**kw):
 
 def test_defaults_fill_in():
     cfg = validate({"bulbs": bulbs()})
-    assert cfg["sender"]["min_interval_ms"] == 50
+    assert cfg["sender"]["min_interval_ms"] == 33
     assert cfg["bulbs"][A]["dmx"] is True and cfg["bulbs"][A]["groups"] == []
     assert cfg["dmx_loss"]["mode"] == "hold"
 

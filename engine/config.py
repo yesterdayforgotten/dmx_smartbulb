@@ -37,7 +37,7 @@ DEFAULTS = {
     "input": {"backend": "uart", "port": "/dev/ttyAMA3"},
     "sender": {
         "budget_pps": 500,           # packets/s for the whole rig (clean for 50 bulbs at 10 Hz in tests)
-        "min_interval_ms": 50,       # per bulb: at most 20 commands/s
+        "min_interval_ms": 33,       # per bulb: at most 30 commands/s (fine on firmware 1.0.15)
         "max_backoff_ms": 1000,      # ceiling when a bulb stops replying
         "refresh_s": 2.0,            # re-send unconfirmed commands after this long
         "backoff_after": 3,          # consecutive lost replies before a bulb is slowed down
@@ -49,6 +49,7 @@ DEFAULTS = {
         "mode": "sync",              # sync: every changed bulb per output frame; priority: biggest change first
     },
     "dmx_loss": {"mode": "hold", "after_s": 5.0, "look": None},
+    "identify": {"blink_hz": 2.0, "duration_s": 4.0},
     "network": {"ssid": "", "password": ""},
     "auth": {"password_hash": None, "session_secret": None},
     "kasa_port": 9999,
@@ -181,6 +182,10 @@ def validate(raw):
     _num(problems, "DMX-loss delay", loss["after_s"], 0, 3600)
     if loss["mode"] == "look" and loss["look"] not in cfg["looks"]:
         problems.append(f"DMX-loss look {loss['look']!r} doesn't exist")
+
+    ident = cfg["identify"]
+    _num(problems, "identify blink rate", ident["blink_hz"], 0.2, 10)
+    _num(problems, "identify duration", ident["duration_s"], 0.5, 60)
 
     _num(problems, "Kasa port", cfg["kasa_port"], 1, 65535, integer=True)
     _num(problems, "web port", cfg["web_port"], 1, 65535, integer=True)

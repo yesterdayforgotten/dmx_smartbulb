@@ -124,3 +124,25 @@ def test_idle_bulbs_show_online(tmp_path):
         finally:
             fleet.stop()
     asyncio.run(go())
+
+
+def test_bulb_info_and_power_on_are_read(tmp_path):
+    """Discovery records model/firmware/signal; power-on defaults are read back,
+    including right after they're changed."""
+    async def go():
+        fleet = await FakeBulbFleet(2, port=PORT).start()
+        try:
+            engine = make_engine(tmp_path, fleet, recording(tmp_path))
+            await engine.start()
+            await engine.rediscover()
+            await engine.read_power_on()
+            mac = fleet.bulbs[0].mac
+            assert engine.info[mac]["model"] == "KL135(US)" and engine.info[mac]["fw"].startswith("1.0")
+            assert engine.info[mac]["power_on"]["mode"] == "preset"
+            await engine.set_power_on([mac], ("temp", 3000, 60))
+            assert engine.info[mac]["power_on"]["k"] == 3000 and engine.info[mac]["power_on"]["v"] == 60
+            assert "info" in engine.status()
+            engine.stop()
+        finally:
+            fleet.stop()
+    asyncio.run(go())

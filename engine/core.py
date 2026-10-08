@@ -16,6 +16,7 @@ LOSS_DETECT_S = 1.0          # no frame for this long means DMX is lost
 TICK_S = 0.01                # tick at least this often without new frames
 REDISCOVER_AFTER_S = 10.0    # a bulb offline this long triggers rediscovery
 REDISCOVER_EVERY_S = 30.0    # at most this often
+INFO_EVERY_S = 600.0         # refresh firmware/model/signal and power-on defaults this often
 
 
 class Engine:
@@ -35,6 +36,7 @@ class Engine:
         self.last_frame = None       # monotonic time of the newest frame
         self.loss_applied = False
         self.ip_changes = []         # (time, name, old ip, new ip), for the UI
+        self.info = {}               # mac -> model, hw_ver, fw, rssi, alias, power_on (not saved)
         self._last_discovery = -REDISCOVER_EVERY_S
         self._wake = asyncio.Event()
         self._stopping = False
@@ -115,8 +117,10 @@ class Engine:
         try:
             self._last_discovery = time.monotonic()
             await self.rediscover()
+            await self.read_power_on()
         except OSError as e:
             log.warning("start-up discovery failed: %s", e)
+        last_info = time.monotonic()
         n = 0
         while True:
             await asyncio.sleep(1.0)
@@ -130,6 +134,14 @@ class Engine:
             if offline and now - self._last_discovery >= REDISCOVER_EVERY_S:
                 self._last_discovery = now
                 await self.rediscover()
+            elif now - last_info >= INFO_EVERY_S:
+                last_info = now
+                self._last_discovery = now
+                try:
+                    await self.rediscover()
+                    await self.read_power_on()
+                except OSError as e:
+                    log.warning("info refresh failed: %s", e)
             if n % 60 == 0:
                 st = self.status(now)
                 log.info("frames %d, sent %d, online %d/%d, latency p95 %s ms",
@@ -155,6 +167,8 @@ class Engine:
         changed = False
         for ip, info in found.items():
             mac = kasa.sysinfo_mac(info)
+            if mac:
+                self._note_info(mac, info)
             b = self.cfg["bulbs"].get(mac)
             if b is None or b["ip"] == ip:
                 continue
@@ -170,6 +184,24 @@ class Engine:
             self.cfg = self.store.save(self.cfg)
             self.sender.apply_config(self.cfg)
         return found
+
+    def _note_info(self, mac, sysinfo):
+        rec = self.info.setdefault(mac, {})
+        rec.update(model=sysinfo.get("model"), hw_ver=sysinfo.get("hw_ver"), fw=sysinfo.get("sw_ver"),
+                   rssi=sysinfo.get("rssi"), alias=sysinfo.get("alias"), seen=time.time())
+
+    async def read_power_on(self, macs=None):
+        """Read each bulb's power-on default (get_default_behavior) into self.info."""
+        async def one(mac, ip):
+            r = await self.transport.request(ip, kasa.DEFAULT_BEHAVIOR, timeout=1.0)
+            po = kasa.power_on_from_reply(r) if r else None
+            if po is not None:
+                self.info.setdefault(mac, {})["power_on"] = po
+        jobs = [one(mac, rt.ip) for mac, rt in self.sender.bulbs.items()
+                if rt.ip and (macs is None or mac in macs)]
+        # A handful at a time, so 50 bulbs don't all answer at once.
+        for i in range(0, len(jobs), 8):
+            await asyncio.gather(*jobs[i:i + 8])
 
     # ---- operations for the web UI ---------------------------------------------
 
@@ -205,18 +237,21 @@ class Engine:
     def recall_look(self, name):
         self.sender.apply_look(self.cfg["looks"][name], time.monotonic())
 
-    async def identify(self, mac, seconds=4.0):
-        """Blink a bulb (white, full/off at 2 Hz), then put it back."""
+    async def identify(self, mac):
+        """Blink a bulb (white, full/dim) at the configured rate and duration,
+        then put it back."""
+        ident = self.cfg["identify"]
+        half = 0.5 / ident["blink_hz"]
         rt = self.sender.bulbs[mac]
         before_target, before_source, before_raw = rt.target, rt.source, rt.manual_raw
-        end = time.monotonic() + seconds
+        end = time.monotonic() + ident["duration_s"]
         self.sender.hold(mac, end + 0.5)
         on = True
         while time.monotonic() < end:
             if rt.ip:
                 self.transport.send(rt.ip, kasa.temperature_state(5000, 100 if on else 1, 0))
             on = not on
-            await asyncio.sleep(0.25)
+            await asyncio.sleep(half)
         rt.target, rt.source, rt.manual_raw = before_target, before_source, before_raw
         rt.sent = None              # force the restore to be sent
         rt.last_send = -1e9
@@ -247,6 +282,7 @@ class Engine:
             r = await self.transport.request(rt.ip, cmd, timeout=1.0)
             res = (r or {}).get(kasa.LIGHTING, {}).get("set_preferred_state", {})
             results[mac] = res.get("err_code") == 0
+        await self.read_power_on([m for m, ok in results.items() if ok])
         return results
 
     async def bulb_info(self, mac):
@@ -280,6 +316,7 @@ class Engine:
             found = await self.discover(self.discovery_targets, port=self.cfg["kasa_port"], timeout=2.0)
             for ip, info in found.items():
                 if kasa.sysinfo_mac(info) == mac:
+                    self._note_info(mac, info)
                     if ip != rt.ip:
                         self.update_config(lambda c: c["bulbs"][mac].update(ip=ip))
                     return info.get("sw_ver")
@@ -311,4 +348,5 @@ class Engine:
             "online": sum(1 for b in bulbs.values() if b["online"]),
             "bulbs": bulbs,
             "ip_changes": self.ip_changes[-20:],
+            "info": self.info,
         }
