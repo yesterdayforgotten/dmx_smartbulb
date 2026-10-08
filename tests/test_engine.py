@@ -170,23 +170,6 @@ def test_power_draw_color_and_last_state_power_on(tmp_path):
     asyncio.run(go())
 
 
-def test_wifi_priority_marks_packets(tmp_path):
-    import socket as so
-    async def go():
-        fleet = await FakeBulbFleet(1, port=PORT).start()
-        try:
-            engine = make_engine(tmp_path, fleet, recording(tmp_path))
-            await engine.start()
-            sock = engine.transport.transport.get_extra_info("socket")
-            assert sock.getsockopt(so.IPPROTO_IP, so.IP_TOS) == 0
-            engine.update_config(lambda c: c["sender"].update(wifi_priority="voice"))
-            assert sock.getsockopt(so.IPPROTO_IP, so.IP_TOS) == 0xC0
-            engine.stop()
-        finally:
-            fleet.stop()
-    asyncio.run(go())
-
-
 def test_latency_histogram_buckets():
     from engine.sender import histogram
     counts = histogram([0.005, 0.010, 0.049, 0.050, 0.3, 2.0])

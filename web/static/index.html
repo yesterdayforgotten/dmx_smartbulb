@@ -444,10 +444,6 @@
           <label class="field"><span>Re-send unconfirmed after (s)</span><input id="refresh" type="number" min="0.2" max="60" step="0.1" x-model.number="settings.sender.refresh_s"></label>
           <label class="field"><span>Lost replies before slowing a bulb</span><input id="backoffafter" type="number" min="1" max="50" x-model.number="settings.sender.backoff_after"></label>
           <label class="field"><span>Check idle bulbs every (s)</span><input id="idlecheck" type="number" min="0.5" max="300" step="0.5" x-model.number="settings.sender.idle_check_s"></label>
-          <label class="field"><span>WiFi priority for bulb commands</span>
-            <select id="wifiprio" x-model="settings.sender.wifi_priority">
-              <option value="off">Normal</option><option value="video">Video</option><option value="voice">Voice (highest)</option>
-            </select></label>
         </section>
 
         <h2>Smoothness</h2>

@@ -50,7 +50,6 @@ class Engine:
         self.transport = await kasa.KasaTransport.create(port=self.cfg["kasa_port"])
         self.sender = Sender(self.cfg, self.transport.send)
         self.transport.on_reply = self._on_reply
-        self._apply_wifi_priority()
         self.receiver.start()
         asyncio.get_running_loop().add_reader(self.receiver.wake_fd, self._on_wake)
         log.info("engine started: %d bulbs, input %s", len(self.cfg["bulbs"]), self.receiver.backend)
@@ -64,10 +63,6 @@ class Engine:
                 rec = self.info.setdefault(rt.mac, {})
                 rec["power_mw"], rec["lumens"] = power
                 rec["power_t"] = time.time()
-
-    def _apply_wifi_priority(self):
-        if self.transport:
-            self.transport.set_tos(kasa.WIFI_PRIORITY_TOS[self.cfg["sender"]["wifi_priority"]])
 
     def _on_wake(self):
         self.receiver.drain()
@@ -267,7 +262,6 @@ class Engine:
         change(new)
         self.cfg = self.store.save(new)
         self.sender.apply_config(self.cfg)
-        self._apply_wifi_priority()
         return self.cfg
 
     def set_dmx_enabled(self, enabled):

@@ -106,7 +106,6 @@ LAST_STATE_ON = {LIGHTING: {"set_default_behavior": {"soft_on": {"mode": "last_s
                                                      "hard_on": {"mode": "last_status"}}}}
 # WiFi (WMM) priority for our packets, as IP TOS bytes. Broadcom APs map the
 # top three DSCP bits to an access category: CS5 -> video, CS6 -> voice.
-WIFI_PRIORITY_TOS = {"off": 0x00, "video": 0xA0, "voice": 0xC0}
 
 
 def power_from_reply(reply):
@@ -202,12 +201,6 @@ class KasaTransport(asyncio.DatagramProtocol):
             if fut in waiters:
                 waiters.remove(fut)
             return None
-
-    def set_tos(self, tos):
-        """Mark our packets with this IP TOS byte (WiFi priority; 0 = normal)."""
-        sock = self.transport.get_extra_info("socket") if self.transport else None
-        if sock is not None:
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, tos)
 
     def close(self):
         if self.transport:
