@@ -411,7 +411,7 @@ function app() {
     },
     rateSummary() {
       const snd = (this.settings && this.settings.sender) || {};
-      const n = Object.keys(this.cfg.bulbs || {}).length, budget = snd.budget_pps || 1, min = snd.min_interval_ms || 1;
+      const n = Object.keys((this.cfg && this.cfg.bulbs) || {}).length, budget = snd.budget_pps || 1, min = snd.min_interval_ms || 1;
       const round = Math.max(min, (1000 * n) / budget);
       const why = round > min ? 'limited by the budget' : 'limited by the per-bulb interval';
       return `With ${n} bulbs: each bulb gets up to ${(1000 / round).toFixed(1)} updates/s, `
