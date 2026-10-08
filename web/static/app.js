@@ -33,7 +33,7 @@ function app() {
     board: null, boardMode: 'colour', boardSel: [], boardColour: { h: 30, s: 80, v: 70 }, boardTemp: 3200,
     boardColourMode: 'hsv', boardSpeed: 1, _boardTimers: {},
     color: { h: 30, s: 80, v: 70 }, temp: 3200, mode: 'hsv', _sendTimer: null,
-    powerOn: { k: 2700, v: 80 }, pwChange: { current: '', next: '' },
+    powerOn: { mode: 'white', k: 2700, h: 30, s: 80, v: 80 }, pwChange: { current: '', next: '' },
     toast: null, _toastTimer: null, _drag: null,
     presets: [
       { label: 'Warm', k: 2700 }, { label: 'Neutral', k: 4000 }, { label: 'Cool', k: 6000 },
@@ -326,6 +326,16 @@ function app() {
       const img = this.fwImages.find((i) => i.model === inf.model && i.hw_ver === inf.hw_ver);
       return !!img && img.version.split(' ')[0] !== inf.fw.split(' ')[0];
     },
+    powerText(mac) {
+      const inf = this.info[mac];
+      if (!inf || inf.power_mw == null) return 'not read yet';
+      const age = inf.power_t ? Math.round(Date.now() / 1000 - inf.power_t) : null;
+      return `${(inf.power_mw / 1000).toFixed(1)} W, ${inf.lumens ?? '?'} lm` + (age != null && age > 60 ? ` (${Math.round(age / 60)} min ago)` : '');
+    },
+    totalPower() {
+      const w = Object.keys(this.cfg.bulbs).map((m) => this.info[m] && this.info[m].power_mw).filter((x) => x != null);
+      return w.length ? (w.reduce((a, b) => a + b, 0) / 1000).toFixed(0) : null;
+    },
     powerOnOf(mac) { return this.info[mac] && this.info[mac].power_on; },
     powerOnText(mac) { return this.describePowerOn(this.powerOnOf(mac)); },
     describePowerOn(po) {
@@ -345,7 +355,10 @@ function app() {
     syncPowerOn() {
       // When every targeted bulb has the same white power-on default, show it in the controls.
       const u = this.powerOnSummary().uniform;
-      if (u && u.mode === 'preset' && u.k) { this.powerOn.k = u.k; this.powerOn.v = u.v; }
+      if (!u) return;
+      if (u.mode === 'last') { this.powerOn.mode = 'last'; return; }
+      if (u.s > 0 && !u.k) Object.assign(this.powerOn, { mode: 'colour', h: u.h, s: u.s, v: u.v || this.powerOn.v });
+      else if (u.k) Object.assign(this.powerOn, { mode: 'white', k: u.k, v: u.v || this.powerOn.v });
     },
 
     // ---------- bulbs tab: actions ----------
@@ -407,7 +420,9 @@ function app() {
     },
     async setPowerOn() {
       const macs = this.targets(true);
-      const r = await this.act(this.api('POST', '/api/power-on', { macs, state: { k: this.powerOn.k, v: this.powerOn.v } }));
+      const p = this.powerOn;
+      const state = p.mode === 'last' ? { mode: 'last' } : p.mode === 'colour' ? { h: p.h, s: p.s, v: p.v } : { k: p.k, v: p.v };
+      const r = await this.act(this.api('POST', '/api/power-on', { macs, state }));
       if (r) {
         const bad = Object.entries(r.results).filter(([, ok]) => !ok).length;
         this.say(bad ? `${bad} bulb(s) didn't confirm` : `Power-on default set on ${macs.length} bulb(s)`, !!bad);

@@ -176,3 +176,20 @@ input[type=number].ch { width: 5em; }
 .pill-btn:hover { filter: brightness(1.2); }
 .pill.warn { color: var(--fg); }
 .switch.big { font-size: 16px; font-weight: 600; }
+
+/* ---- denser bulbs table ---- */
+.bulbs-table { font-size: 14px; }
+.bulbs-table th, .bulbs-table td { padding: 2px 4px; white-space: nowrap; }
+.bulbs-table th { font-size: 11px; }
+.bulbs-table .lamp-btn { width: 20px; height: 20px; border-width: 1px; }
+.bulbs-table select, .bulbs-table input[type=number] { min-height: 28px; padding: 2px 4px; font-size: 13px; }
+.bulbs-table input[type=number].ch { width: 3.6em; margin-left: 3px; }
+.bulbs-table .name-cell { min-width: 0; max-width: 14em; overflow: hidden; text-overflow: ellipsis; }
+.bulbs-table .link { font-weight: 500; }
+.bulbs-table .kebab { width: 28px; height: 28px; font-size: 18px; }
+.tick { width: 18px; height: 18px; accent-color: var(--accent); vertical-align: middle; }
+.chip.tiny { padding: 1px 8px; min-width: 2em; justify-content: center; font-size: 12px; }
+.sdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; background: var(--muted); vertical-align: 1px; }
+.sdot.on { background: var(--ok); } .sdot.slow { background: var(--warn); } .sdot.off { background: var(--bad); }
+.badge-up { margin-left: 4px; font-size: 10px; padding: 0 4px; border-radius: 4px; background: var(--warn); color: #1a1406; }
+.hue-range { background: linear-gradient(90deg, red, yellow, lime, cyan, blue, magenta, red); border-radius: 6px; height: 10px; }
