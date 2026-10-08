@@ -48,7 +48,7 @@ def test_bulbs_follow_dmx(tmp_path):
             b0, b1, b2 = fleet.bulbs
             assert (b0.state["hue"], b0.state["saturation"], b0.state["brightness"]) == (120, 100, 100)
             assert b1.state["hue"] == 120                       # shares channel 1
-            assert (b2.state["hue"], b2.state["brightness"]) == (240, 50)
+            assert (b2.state["hue"], b2.state["brightness"]) == (240, 25)   # half fader, square law
             st = engine.status()
             assert st["online"] == 3 and st["input"]["frames"] > 0
             assert st["sender"]["latency_p95_ms"] is not None

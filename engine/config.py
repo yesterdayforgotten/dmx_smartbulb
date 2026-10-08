@@ -45,7 +45,7 @@ DEFAULTS = {
         "adaptive_transition": False,  # experimental: fade over the send interval
         "fixed_transition_ms": 30,   # fade time per update (the old app's 30 ms)
         "snap_threshold": 0.15,      # changes larger than this fraction snap (0 ms)
-        "curve": "linear",
+        "curve": "square",           # Kasa brightness is linear in light output; square law looks even
         "mode": "sync",              # sync: every changed bulb per output frame; priority: biggest change first
     },
     "dmx_loss": {"mode": "hold", "after_s": 5.0, "look": None},
