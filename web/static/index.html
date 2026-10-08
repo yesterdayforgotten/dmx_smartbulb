@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1214">
+<title>Stage Bulbs</title>
+<link rel="stylesheet" href="app.css">
+<script src="app.js"></script>
+<script defer src="vendor/alpine.min.js"></script>
+</head>
+<body x-data="app()" x-init="init()">
+
+<!-- ================= first run / login ================= -->
+<template x-if="loaded && !session.authenticated">
+  <div class="login">
+    <form @submit.prevent="session.setup_needed ? doSetup() : doLogin()">
+      <h1 x-text="session.setup_needed ? 'Set up Stage Bulbs' : 'Stage Bulbs'"></h1>
+      <p class="muted" x-show="session.setup_needed">Choose the password venue staff will use for this page.</p>
+      <label class="field"><span>Password</span>
+        <input id="pw" type="password" x-model="pw" autocomplete="current-password" required></label>
+      <template x-if="session.setup_needed">
+        <div class="stack">
+          <label class="field"><span>Repeat password</span>
+            <input id="pw2" type="password" x-model="pw2" autocomplete="new-password" required></label>
+          <p class="muted" style="margin:0">Show network (used later for pairing bulbs; optional)</p>
+          <label class="field"><span>Network name (SSID)</span><input id="ssid" type="text" x-model="ssid"></label>
+          <label class="field"><span>Network password</span><input id="wifipw" type="password" x-model="wifiPw"></label>
+        </div>
+      </template>
+      <p class="error-text" x-show="loginError" x-text="loginError"></p>
+      <button class="btn primary" type="submit" x-text="session.setup_needed ? 'Save and continue' : 'Log in'"></button>
+    </form>
+  </div>
+</template>
+
+<!-- ================= app ================= -->
+<template x-if="loaded && session.authenticated && cfg">
+<div>
+  <header class="top">
+    <div class="wrap">
+      <div class="brand">Stage Bulbs</div>
+      <div class="health">
+        <span class="pill" :class="live && live.dmx ? 'ok' : 'bad'"><span class="dot"></span>
+          <span x-text="live && live.dmx ? 'DMX ' + fps + ' fps' : (live && live.loss ? 'No DMX (loss action)' : 'No DMX')"></span></span>
+        <span class="pill" :class="onlineCount() === bulbList().length ? 'ok' : 'warn'"><span class="dot"></span>
+          <span x-text="onlineCount() + '/' + bulbList().length + ' online'"></span></span>
+        <span class="pill" x-show="live && live.sender.latency_p95_ms != null" x-text="'p95 ' + (live ? live.sender.latency_p95_ms : '') + ' ms'"></span>
+        <span class="pill bad" x-show="live && (live.input.malformed || live.input.oe || live.input.restarts)"><span class="dot"></span>
+          <span x-text="inputProblems()"></span></span>
+      </div>
+      <nav class="tabs" aria-label="Sections">
+        <template x-for="t in tabs" :key="t.id">
+          <button type="button" @click="setTab(t.id)" :aria-current="tab === t.id ? 'page' : null" x-text="t.label"></button>
+        </template>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- ================= LIVE ================= -->
+    <div x-show="tab === 'live'">
+      <div class="looks" x-show="Object.keys(cfg.looks).length">
+        <template x-for="name in Object.keys(cfg.looks)" :key="name">
+          <button class="btn" type="button" @click="recallLook(name)" x-text="name"></button>
+        </template>
+      </div>
+
+      <div class="row" style="margin:12px 0">
+        <button class="btn small" type="button" :aria-pressed="view === 'map'" @click="view = 'map'">Map</button>
+        <button class="btn small" type="button" :aria-pressed="view === 'list'" @click="view = 'list'">List</button>
+        <span style="flex:1"></span>
+        <button class="btn small" type="button" :aria-pressed="selectMode" @click="selectMode = !selectMode; if (!selectMode) selected = []"
+                x-text="selectMode ? 'Selecting (' + selected.length + ')' : 'Select'"></button>
+        <button class="btn small" type="button" x-show="view === 'map'" :aria-pressed="editLayout" @click="editLayout = !editLayout"
+                x-text="editLayout ? 'Done arranging' : 'Edit layout'"></button>
+      </div>
+
+      <div class="row" style="margin-bottom:10px" x-show="Object.keys(cfg.groups).length">
+        <template x-for="g in Object.keys(cfg.groups)" :key="g">
+          <button class="chip" type="button" @click="selectGroup(g)" x-text="g"></button>
+        </template>
+      </div>
+
+      <div x-show="selectMode && selected.length" class="row" style="margin-bottom:10px">
+        <span class="muted" x-text="selected.length + ' selected'"></span>
+        <button class="btn small primary" type="button" @click="setTab('control')">Control selected</button>
+        <button class="btn small" type="button" @click="selected = []">Clear</button>
+      </div>
+
+      <template x-if="view === 'map'">
+        <div class="stack">
+          <div class="stage" :class="editLayout && 'editing'" x-ref="stage">
+            <template x-for="b in placedBulbs()" :key="b.mac">
+              <div class="bulb" :class="{offline: !isOnline(b.mac), selected: selected.includes(b.mac)}"
+                   :style="`left:${b.pos[0] * 100}%; top:${b.pos[1] * 100}%`"
+                   @pointerdown="dragStart($event, b.mac)" @click="tapBulb(b.mac)">
+                <div class="lamp" :style="lampStyle(b.mac)"></div>
+                <span class="badge" :class="liveOf(b.mac).backoff && 'backoff'" x-show="badge(b.mac)" x-text="badge(b.mac)"></span>
+                <span class="name" x-text="b.name"></span>
+              </div>
+            </template>
+            <div class="stage-label">STAGE</div>
+          </div>
+          <div x-show="unplacedBulbs().length">
+            <p class="muted" style="margin:0 0 6px" x-text="editLayout ? 'Drag these onto the map:' : 'Not placed yet (use Edit layout):'"></p>
+            <div class="tray">
+              <template x-for="b in unplacedBulbs()" :key="b.mac">
+                <div class="bulb" :class="{offline: !isOnline(b.mac), selected: selected.includes(b.mac)}"
+                     @pointerdown="dragStart($event, b.mac)" @click="tapBulb(b.mac)">
+                  <div class="lamp" :style="lampStyle(b.mac)"></div>
+                  <span class="name" x-text="b.name"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="view === 'list'">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th></th><th>Bulb</th><th>Ch</th><th>Source</th><th>Status</th><th>RTT</th></tr></thead>
+            <tbody>
+              <template x-for="b in bulbList()" :key="b.mac">
+                <tr @click="tapBulb(b.mac)" style="cursor:pointer" :style="selected.includes(b.mac) && 'background:var(--panel-2)'">
+                  <td><span class="swatch" :style="lampStyle(b.mac, true)"></span></td>
+                  <td x-text="b.name"></td>
+                  <td class="mono" x-text="channelLabel(b)"></td>
+                  <td x-text="sourceLabel(b.mac)"></td>
+                  <td><span class="status" :class="isOnline(b.mac) ? 'on' : 'off'" x-text="isOnline(b.mac) ? (liveOf(b.mac).backoff ? 'backed off' : 'online') : 'offline'"></span></td>
+                  <td class="mono" x-text="liveOf(b.mac).rtt != null ? liveOf(b.mac).rtt + ' ms' : '–'"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </template>
+
+      <template x-if="live && live.ip_changes && live.ip_changes.length">
+        <div style="margin-top:14px" class="stack">
+          <template x-for="c in live.ip_changes.slice(-3)">
+            <div class="warn-box" x-text="`${c[1]} moved from ${c[2] || '?'} to ${c[3]} (found by MAC)`"></div>
+          </template>
+        </div>
+      </template>
+    </div>
+
+    <!-- ================= BULBS ================= -->
+    <div x-show="tab === 'bulbs'">
+      <div class="stack" x-show="warnings.length" style="margin-bottom:12px">
+        <template x-for="w in warnings"><div class="warn-box" x-text="'Overlap: ' + w"></div></template>
+      </div>
+
+      <div class="row">
+        <button class="btn primary" type="button" @click="discover()" :disabled="discovering" x-text="discovering ? 'Searching…' : 'Find bulbs'"></button>
+        <button class="btn" type="button" x-show="selected.length" @click="autoAssign()" x-text="`Auto-assign ${selected.length} from channel…`"></button>
+        <span class="muted" x-text="'Next free channel: ' + (nextFree || 'none')"></span>
+      </div>
+
+      <template x-if="found">
+        <section class="card" style="margin-top:12px">
+          <p style="margin:0 0 8px" x-text="newFound().length ? newFound().length + ' new bulb(s) found' : 'No new bulbs found (' + found.length + ' known bulbs answered).'"></p>
+          <template x-for="f in newFound()" :key="f.mac">
+            <div class="row" style="padding:6px 0; border-top:1px solid var(--line)">
+              <span x-text="f.alias"></span><span class="muted mono" x-text="f.ip + ' · ' + f.model + ' · fw ' + (f.fw || '').split(' ')[0]"></span>
+              <span style="flex:1"></span>
+              <button class="btn small primary" type="button" @click="addBulb(f)">Add</button>
+            </div>
+          </template>
+        </section>
+      </template>
+
+      <h2>Patch</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th><input type="checkbox" aria-label="Select all" @change="selected = $event.target.checked ? bulbList().map(b => b.mac) : []"></th>
+            <th>Name</th><th>Channel</th><th>DMX</th><th>Groups</th><th>IP / fw</th><th></th></tr></thead>
+          <tbody>
+            <template x-for="b in bulbList()" :key="b.mac">
+              <tr>
+                <td><input type="checkbox" :checked="selected.includes(b.mac)" @change="toggleSelect(b.mac)" :aria-label="'Select ' + b.name"></td>
+                <td><input type="text" :id="'name-' + b.mac" :value="b.name" @change="editBulb(b.mac, {name: $event.target.value})"></td>
+                <td>
+                  <div class="row" style="flex-wrap:nowrap">
+                    <select :id="'patch-' + b.mac" @change="setPatchMode(b, $event.target.value)">
+                      <option value="own" :selected="!b.follow">Own</option>
+                      <template x-for="g in Object.keys(cfg.groups)"><option :value="'g:' + g" :selected="b.follow === g" x-text="'Follow ' + g"></option></template>
+                      <option value="none" :selected="!b.follow && b.channel == null">Unpatched</option>
+                    </select>
+                    <input type="number" min="1" max="510" :id="'ch-' + b.mac" x-show="!b.follow" :value="b.channel ?? ''"
+                           @change="editBulb(b.mac, {channel: $event.target.value === '' ? null : +$event.target.value})">
+                  </div>
+                </td>
+                <td><label class="switch"><input type="checkbox" :checked="b.dmx" @change="editBulb(b.mac, {dmx: $event.target.checked})" :aria-label="'DMX for ' + b.name"></label></td>
+                <td>
+                  <div class="row">
+                    <template x-for="g in Object.keys(cfg.groups)">
+                      <button type="button" class="chip" :aria-pressed="b.groups.includes(g)" @click="toggleGroup(b, g)" x-text="g"></button>
+                    </template>
+                  </div>
+                </td>
+                <td class="mono"><span x-text="b.ip || '—'"></span>
+                  <template x-if="fwJob(b.mac)"><div class="muted" x-text="fwJob(b.mac).message + (fwJob(b.mac).state === 'running' ? ' (' + fwJob(b.mac).ratio + '%)' : '')"></div></template></td>
+                <td><div class="row" style="flex-wrap:nowrap">
+                  <button class="btn small" type="button" @click="identify(b.mac)">Identify</button>
+                  <button class="btn small" type="button" x-show="fwImages.length" @click="updateFirmware(b.mac)">Firmware</button>
+                  <button class="btn small danger" type="button" @click="removeBulb(b)">Remove</button>
+                </div></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Groups</h2>
+      <section class="card stack">
+        <template x-for="name in Object.keys(cfg.groups)" :key="name">
+          <div class="row">
+            <strong x-text="name" style="min-width:8em"></strong>
+            <label class="field" style="grid-auto-flow:column; align-items:center"><span>Shared channel</span>
+              <input type="number" min="1" max="510" :value="cfg.groups[name].channel ?? ''" @change="putGroup(name, $event.target.value === '' ? null : +$event.target.value)"></label>
+            <span class="muted" x-text="bulbList().filter(b => b.groups.includes(name)).length + ' bulbs'"></span>
+            <button class="btn small" type="button" @click="selectGroup(name)">Select</button>
+            <button class="btn small danger" type="button" @click="deleteGroup(name)">Delete</button>
+          </div>
+        </template>
+        <form class="row" @submit.prevent="addGroup()">
+          <input id="newgroup" type="text" placeholder="New group name" x-model="newGroup">
+          <button class="btn" type="submit">Add group</button>
+        </form>
+      </section>
+
+      <h2>Power-on default</h2>
+      <section class="card stack">
+        <p class="muted" style="margin:0">What each bulb shows when power is switched on, before this Pi has started. Applies to the selected bulbs, or all if none are selected.</p>
+        <div class="row">
+          <label class="field"><span>White (K)</span><input type="number" min="2500" max="6500" step="100" x-model.number="powerOn.k"></label>
+          <label class="field"><span>Brightness %</span><input type="number" min="1" max="100" x-model.number="powerOn.v"></label>
+          <button class="btn" type="button" @click="setPowerOn()" x-text="`Apply to ${targets(true).length} bulb(s)`"></button>
+        </div>
+      </section>
+    </div>
+
+    <!-- ================= CONTROL ================= -->
+    <div x-show="tab === 'control'">
+      <div class="row" style="margin-bottom:12px">
+        <span x-text="'Controlling: ' + targetLabel()"></span>
+        <span style="flex:1"></span>
+        <button class="chip" type="button" @click="selected = []">All bulbs</button>
+        <template x-for="g in Object.keys(cfg.groups)"><button class="chip" type="button" @click="selectGroup(g)" x-text="g"></button></template>
+      </div>
+      <div class="control">
+        <canvas class="wheel" width="520" height="520" x-ref="wheel" @pointerdown="wheelPick($event)" @pointermove="$event.buttons && wheelPick($event)"></canvas>
+        <div class="stack">
+          <label class="field"><span x-text="'Brightness ' + color.v + '%'"></span>
+            <input type="range" min="0" max="100" x-model.number="color.v" @input="sendColor()"></label>
+          <label class="field"><span x-text="'White ' + temp + ' K'"></span>
+            <input type="range" class="temp-range" min="2500" max="6500" step="50" x-model.number="temp" @input="sendTemp()"></label>
+          <div class="row">
+            <span class="swatch" style="width:34px;height:34px" :style="cssFromState(mode === 'temp' ? {k: temp, v: color.v} : color, true)"></span>
+            <span class="muted" x-text="mode === 'temp' ? temp + ' K' : `hue ${color.h}°, sat ${color.s}%`"></span>
+            <span style="flex:1"></span>
+            <button class="btn" type="button" x-show="targets().length === 1" @click="identify(targets()[0])">Identify</button>
+          </div>
+          <p class="muted" style="margin:0">A manual colour holds until that bulb's DMX channels change ("DMX wins"). Bulbs with DMX switched off keep it.</p>
+        </div>
+      </div>
+
+      <h2>Looks</h2>
+      <section class="card stack">
+        <form class="row" @submit.prevent="saveLook()">
+          <input id="lookname" type="text" placeholder="Look name, e.g. House lights" x-model="lookName">
+          <button class="btn" type="submit" x-text="selected.length ? `Save ${selected.length} selected` : 'Save all bulbs'"></button>
+        </form>
+        <template x-for="name in Object.keys(cfg.looks)" :key="name">
+          <div class="row">
+            <strong x-text="name" style="min-width:8em"></strong>
+            <span class="muted" x-text="Object.keys(cfg.looks[name]).length + ' bulbs'"></span>
+            <span style="flex:1"></span>
+            <button class="btn small primary" type="button" @click="recallLook(name)">Recall</button>
+            <button class="btn small danger" type="button" @click="deleteLook(name)">Delete</button>
+          </div>
+        </template>
+      </section>
+    </div>
+
+    <!-- ================= SETUP ================= -->
+    <div x-show="tab === 'setup'">
+      <form class="stack" @submit.prevent="saveSettings()">
+        <h2>DMX input</h2>
+        <section class="card row">
+          <label class="field"><span>Input</span>
+            <select id="backend" x-model="settings.input.backend"><option value="uart">Direct DMX (Pi UART)</option><option value="esp32">ESP32 serial</option></select></label>
+          <label class="field"><span>Serial port</span><input id="port" type="text" x-model="settings.input.port"></label>
+        </section>
+
+        <h2>Sending to bulbs</h2>
+        <section class="card row">
+          <label class="field"><span>Budget (packets/s, whole rig)</span><input id="budget" type="number" min="1" max="5000" x-model.number="settings.sender.budget_pps"></label>
+          <label class="field"><span>Per-bulb minimum interval (ms)</span><input id="mininterval" type="number" min="10" max="2000" x-model.number="settings.sender.min_interval_ms"></label>
+          <label class="field"><span>Maximum backoff (ms)</span><input id="maxbackoff" type="number" min="10" max="60000" x-model.number="settings.sender.max_backoff_ms"></label>
+          <label class="field"><span>Refresh every (s)</span><input id="refresh" type="number" min="0.2" max="60" step="0.1" x-model.number="settings.sender.refresh_s"></label>
+        </section>
+
+        <h2>Smoothness</h2>
+        <section class="card row">
+          <label class="switch"><input id="adaptive" type="checkbox" x-model="settings.sender.adaptive_transition"> Adaptive transition</label>
+          <label class="field" x-show="!settings.sender.adaptive_transition"><span>Fixed transition (ms)</span><input id="fixedtr" type="number" min="0" max="10000" x-model.number="settings.sender.fixed_transition_ms"></label>
+          <label class="field" x-show="settings.sender.adaptive_transition"><span>Snap above (0–1 change)</span><input id="snap" type="number" min="0" max="1" step="0.05" x-model.number="settings.sender.snap_threshold"></label>
+          <label class="field"><span>Brightness curve</span>
+            <select id="curve" x-model="settings.sender.curve"><option value="linear">Linear</option><option value="square">Square law</option><option value="scurve">S-curve</option></select></label>
+        </section>
+
+        <h2>When DMX stops</h2>
+        <section class="card row">
+          <label class="field"><span>Behaviour</span>
+            <select id="lossmode" x-model="settings.dmx_loss.mode"><option value="hold">Hold the last look</option><option value="look">Recall a look</option><option value="blackout">Blackout</option></select></label>
+          <label class="field" x-show="settings.dmx_loss.mode !== 'hold'"><span>After (s)</span><input id="lossafter" type="number" min="1" max="3600" x-model.number="settings.dmx_loss.after_s"></label>
+          <label class="field" x-show="settings.dmx_loss.mode === 'look'"><span>Look</span>
+            <select id="losslook" x-model="settings.dmx_loss.look"><template x-for="n in Object.keys(cfg.looks)"><option :value="n" x-text="n"></option></template></select></label>
+        </section>
+
+        <h2>Show network</h2>
+        <section class="card row">
+          <label class="field"><span>Network name</span><input id="netssid" type="text" x-model="settings.network.ssid"></label>
+          <label class="field"><span>Password</span><input id="netpw" type="password" x-model="settings.network.password"></label>
+        </section>
+
+        <div class="row"><button class="btn primary" type="submit">Save settings</button></div>
+      </form>
+
+      <h2>Backup</h2>
+      <section class="card row">
+        <a class="btn" href="/api/backup">Download backup</a>
+        <label class="btn">Restore from file… <input type="file" accept=".json,application/json" hidden @change="restore($event)"></label>
+      </section>
+
+      <h2>Password</h2>
+      <form class="card row" @submit.prevent="changePassword()">
+        <input id="curpw" type="password" placeholder="Current password" x-model="pwChange.current" autocomplete="current-password">
+        <input id="newpw" type="password" placeholder="New password" x-model="pwChange.next" autocomplete="new-password">
+        <button class="btn" type="submit">Change password</button>
+        <button class="btn" type="button" @click="logout()">Log out</button>
+      </form>
+
+      <h2>Bulb firmware on this Pi</h2>
+      <section class="card">
+        <p class="muted" style="margin:0" x-show="!fwImages.length">None downloaded. Run <span class="mono">python -m engine firmware fetch</span> on the Pi while it has internet.</p>
+        <template x-for="img in fwImages"><div x-text="`${img.model} hw ${img.hw_ver}: ${img.version}`"></div></template>
+        <p class="muted" style="margin:8px 0 0" x-show="fwImages.length">Update bulbs from the Bulbs tab (Firmware button). Not while a show is running.</p>
+      </section>
+    </div>
+  </main>
+
+  <!-- ================= bulb sheet ================= -->
+  <template x-if="sheet && cfg.bulbs[sheet]">
+    <div class="backdrop" @click.self="sheet = null">
+      <div class="sheet stack" role="dialog" aria-modal="true" :aria-label="cfg.bulbs[sheet].name">
+        <div class="row">
+          <span class="swatch" style="width:28px;height:28px" :style="lampStyle(sheet, true)"></span>
+          <strong x-text="cfg.bulbs[sheet].name"></strong>
+          <span class="muted mono" x-text="channelLabel(cfg.bulbs[sheet])"></span>
+          <span style="flex:1"></span>
+          <button class="btn small" type="button" @click="sheet = null">Close</button>
+        </div>
+        <div class="row muted" style="font-size:14px">
+          <span x-text="isOnline(sheet) ? 'Online' : 'Offline'"></span>·
+          <span x-text="sourceLabel(sheet)"></span>·
+          <span x-text="cfg.bulbs[sheet].ip || 'no IP'"></span>
+        </div>
+        <label class="switch"><input type="checkbox" :checked="cfg.bulbs[sheet].dmx" @change="editBulb(sheet, {dmx: $event.target.checked})"> Follows DMX</label>
+        <label class="field"><span x-text="'Brightness ' + color.v + '%'"></span>
+          <input type="range" min="0" max="100" x-model.number="color.v" @input="sendColor()"></label>
+        <label class="field"><span x-text="'White ' + temp + ' K'"></span>
+          <input type="range" class="temp-range" min="2500" max="6500" step="50" x-model.number="temp" @input="sendTemp()"></label>
+        <div class="row">
+          <template x-for="p in presets"><button class="btn small" type="button" @click="applyPreset(p)" x-text="p.label"></button></template>
+        </div>
+        <div class="row">
+          <button class="btn" type="button" @click="identify(sheet)">Identify</button>
+          <button class="btn" type="button" @click="openControlFor(sheet)">Colour wheel…</button>
+        </div>
+      </div>
+    </div>
+  </template>
+</div>
+</template>
+
+<div class="toast" :class="toast && toast.error && 'error'" x-show="toast" x-cloak x-text="toast && toast.text" role="status"></div>
+</body>
+</html>
