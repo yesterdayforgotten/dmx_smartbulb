@@ -448,7 +448,7 @@ function app() {
       const l = this.liveOf(mac), i = this.info[mac] || {};
       const pct = l.sends ? (100 * Math.min(l.replies, l.sends) / l.sends).toFixed(1) + '%' : '–';
       const out = [
-        ['Reply time', l.rtt != null ? l.rtt + ' ms' : '–'],
+        ['RTT', l.rtt != null ? l.rtt + ' ms' : '–'],
         ['Replies', l.sends ? `${pct} of ${l.sends}` : '–'],
         ['Missed replies', l.misses ?? '–'],
         ['Updates every', l.interval != null ? l.interval + ' ms' + (l.backoff ? ' (slowed)' : '') : '–'],
