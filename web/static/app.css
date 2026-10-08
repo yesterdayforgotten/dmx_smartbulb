@@ -194,6 +194,7 @@ input[type=number].ch { width: 5em; }
 .sdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; background: var(--muted); vertical-align: 1px; }
 .sdot.on { background: var(--ok); } .sdot.slow { background: var(--warn); } .sdot.off { background: var(--bad); }
 .badge-up { margin-left: 4px; font-size: 10px; padding: 0 4px; border-radius: 4px; background: var(--warn); color: #1a1406; }
+.hue-range, .sat-range { border-radius: 6px; height: 10px; }
 .hue-range { background: linear-gradient(90deg, red, yellow, lime, cyan, blue, magenta, red); border-radius: 6px; height: 10px; }
 
 .assign-preview { display: grid; gap: 4px; max-height: 300px; overflow: auto; }

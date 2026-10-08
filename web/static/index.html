@@ -344,6 +344,12 @@
       <div x-show="boardMode === 'color'" class="control">
         <div class="stack">
           <canvas class="wheel" width="520" height="520" x-ref="boardwheel" x-init="$nextTick(() => drawWheel($el))" @pointerdown="boardWheelPick($event)" @pointermove="$event.buttons && boardWheelPick($event)"></canvas>
+          <label class="field"><span x-text="'Hue ' + Math.round(boardColor.h) + '°'"></span>
+            <input id="bhue" type="range" class="hue-range" min="0" max="359" x-model.number="boardColor.h"
+                   @input="boardColorMode = 'hsv'; boardSendColor()"></label>
+          <label class="field"><span x-text="'Saturation ' + Math.round(boardColor.s) + '%'"></span>
+            <input id="bsat" type="range" class="sat-range" min="0" max="100" x-model.number="boardColor.s" :style="satTrack(boardColor.h)"
+                   @input="boardColorMode = 'hsv'; boardSendColor()"></label>
           <label class="field"><span x-text="'Brightness ' + boardColor.v + '%'"></span>
             <input id="bbright" type="range" min="0" max="100" x-model.number="boardColor.v" @input="boardSendColor()"></label>
           <label class="field"><span x-text="'White ' + boardTemp + ' K'"></span>

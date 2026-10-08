@@ -590,9 +590,21 @@ function app() {
       const h = Math.round(f.h / 255 * 360), sat = Math.round(f.s / 255 * 100), v = Math.round(f.v / 255 * 100);
       return this.cssFromState({ h, s: sat, v }, true);
     },
+    satTrack(h) {
+      const [r, g, b] = hsvToRgb(h, 100, 100);
+      return `background: linear-gradient(to right, #fff, rgb(${r},${g},${b}))`;
+    },
     boardThrottle(key, fn) {
-      clearTimeout(this._boardTimers[key]);
-      this._boardTimers[key] = setTimeout(fn, 40);
+      // Send while dragging, not only when the drag pauses: one request in flight per
+      // key, the newest value wins, and the next goes as soon as the last one is back.
+      const t = this._boardTimers[key] || (this._boardTimers[key] = { busy: false, next: null });
+      if (t.busy) { t.next = fn; return; }
+      t.busy = true;
+      Promise.resolve(fn()).finally(() => {
+        t.busy = false;
+        const next = t.next; t.next = null;
+        if (next) this.boardThrottle(key, next);
+      });
     },
     boardFader(ch, value) {
       this.boardThrottle('ch' + ch, async () => {

@@ -3,7 +3,9 @@
 When an Enttec (FTDI FT232R) is plugged in, the web UI's Control Board tab can
 set channels, set a color for chosen fixtures, or run test shows. The 512
 channel values live in `values`; a background thread sends them as DMX frames
-(BREAK, MAB, start code 0 and 512 slots at 250 kbaud) about 30 times a second.
+(BREAK, MAB, start code 0 and 512 slots at 250 kbaud) back to back, about 25
+times a second. That is the ceiling for full 512-slot frames here: the frame takes
+23 ms on the wire, and the FTDI driver takes 15-28 ms just to start the BREAK.
 The DMX goes out of the Enttec into the show's DMX line, back in through the
 receiver, so everything downstream behaves exactly as it would with a desk.
 """
@@ -119,10 +121,10 @@ class Board:
                 except serial.SerialTimeoutException:
                     ser.reset_output_buffer()
                     ser.break_condition = False
-                # About 30 frames/s leaves the CPU and USB some room.
-                wait = 1 / 30 - (time.monotonic() - t0)
-                if wait > 0:
-                    time.sleep(wait)
+                # Back to back (~25 frames/s; see the module docstring). The short
+                # pause keeps a stalled USB write from spinning.
+                if time.monotonic() - t0 < 0.015:
+                    time.sleep(0.005)
         except (serial.SerialException, OSError) as e:
             self.error = str(e)
             log.error("Control Board output stopped: %s", e)
