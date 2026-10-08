@@ -204,11 +204,11 @@
       </template>
 
       <div class="table-wrap" style="margin-top:10px">
-        <table class="bulbs-table">
+        <table class="bulbs-table slim">
           <thead><tr>
             <th><input type="checkbox" aria-label="Select all shown" :checked="filteredBulbs().length && filteredBulbs().every(b => selected.includes(b.mac))"
                        @change="selectShown($event.target.checked)"></th>
-            <th></th><th>Name</th><th>Patch</th><th title="Follows DMX">DMX</th><th title="Groups">Grp</th><th>Status</th><th></th>
+            <th></th><th>Name</th><th>Patch</th><th>DMX</th><th>Groups</th><th>Status</th><th></th>
           </tr></thead>
           <tbody>
             <template x-for="b in filteredBulbs()" :key="b.mac">
@@ -216,30 +216,31 @@
                 <td><input type="checkbox" :checked="selected.includes(b.mac)" @change="toggleSelect(b.mac)" :aria-label="'Select ' + b.name"></td>
                 <td><button type="button" class="lamp-btn" :class="!isOnline(b.mac) && 'off'" :style="lampStyle(b.mac, true)"
                             @click="openSheet(b.mac)" :aria-label="'Details for ' + b.name" :title="stateText(b.mac)"></button></td>
-                <td class="name-cell"><button type="button" class="link" @click="openSheet(b.mac)" x-text="b.name"
-                     :title="(b.ip || 'no IP') + ' · ' + b.mac.match(/../g).join(':') + ' · ' + fwText(b.mac)"></button></td>
-                <td class="patch-cell">
-                  <select :id="'patch-' + b.mac" @change="setPatchMode(b, $event.target.value)" aria-label="Patch">
-                    <option value="own" :selected="!b.follow && b.channel != null">Solo</option>
-                    <template x-for="g in Object.keys(cfg.groups)"><option :value="'g:' + g" :selected="b.follow === g" x-text="'G: ' + g"></option></template>
-                    <option value="none" :selected="!b.follow && b.channel == null">—</option>
-                  </select><input type="number" class="ch" min="1" max="510" :id="'ch-' + b.mac" x-show="!b.follow && b.channel != null" :value="b.channel ?? ''"
-                         @change="editBulb(b.mac, {channel: $event.target.value === '' ? null : +$event.target.value})" aria-label="Start channel"><span
-                    class="muted mono small" x-show="b.follow" x-text="b.follow && cfg.groups[b.follow] && cfg.groups[b.follow].channel ? ' ' + cfg.groups[b.follow].channel : ' –'"></span>
+                <td class="name-cell"><button type="button" class="link" @click="openSheet(b.mac)" x-text="b.name"></button>
+                  <span class="muted mono small" x-text="b.ip || 'no IP'"></span></td>
+                <td>
+                  <div class="row nowrap">
+                    <select :id="'patch-' + b.mac" @change="setPatchMode(b, $event.target.value)" aria-label="Patch">
+                      <option value="own" :selected="!b.follow && b.channel != null">Solo</option>
+                      <template x-for="g in Object.keys(cfg.groups)"><option :value="'g:' + g" :selected="b.follow === g" x-text="'Group: ' + g"></option></template>
+                      <option value="none" :selected="!b.follow && b.channel == null">Unpatched</option>
+                    </select>
+                    <input type="number" class="ch" min="1" max="510" :id="'ch-' + b.mac" x-show="!b.follow && b.channel != null" :value="b.channel ?? ''"
+                           @change="editBulb(b.mac, {channel: $event.target.value === '' ? null : +$event.target.value})" aria-label="Start channel">
+                    <span class="muted mono small" x-show="b.follow" x-text="b.follow && cfg.groups[b.follow] && cfg.groups[b.follow].channel ? 'ch ' + cfg.groups[b.follow].channel : 'no ch'"></span>
+                  </div>
                 </td>
-                <td><input type="checkbox" class="tick" :checked="b.dmx" @change="editBulb(b.mac, {dmx: $event.target.checked})" :aria-label="'DMX for ' + b.name"></td>
-                <td><button type="button" class="chip tiny" @click="groupPopup = b.mac" x-text="b.groups.length || '—'"
-                            :title="b.groups.length ? b.groups.join(', ') : 'No groups'" :aria-label="'Groups for ' + b.name"></button></td>
+                <td><label class="switch"><input type="checkbox" :checked="b.dmx" @change="editBulb(b.mac, {dmx: $event.target.checked})" :aria-label="'DMX for ' + b.name"></label></td>
+                <td><button type="button" class="chip" @click="groupPopup = b.mac" x-text="b.groups.length ? b.groups.length + (b.groups.length === 1 ? ' group' : ' groups') : 'None'"
+                            :title="b.groups.join(', ')"></button></td>
                 <td class="status-cell">
-                  <span class="sdot" :class="isOnline(b.mac) ? (liveOf(b.mac).backoff ? 'slow' : 'on') : 'off'"
-                        :title="isOnline(b.mac) ? (liveOf(b.mac).backoff ? 'online, slowed down' : 'online') : 'offline'"></span><span
-                    class="mono small" x-text="isOnline(b.mac) ? (liveOf(b.mac).rtt != null ? liveOf(b.mac).rtt + 'ms' : '') : 'off'"></span><span
-                    class="badge-up" x-show="fwUpdatable(b.mac)" title="Firmware update available">fw↑</span>
+                  <span class="status" :class="isOnline(b.mac) ? 'on' : 'off'" x-text="isOnline(b.mac) ? (liveOf(b.mac).backoff ? 'slowed' : 'online') : 'offline'"></span>
+                  <span class="muted small mono" x-show="liveOf(b.mac).rtt != null" x-text="liveOf(b.mac).rtt + ' ms'"></span>
+                  <span class="small mono" :class="fwUpdatable(b.mac) ? 'warn-text' : 'muted'" x-text="fwText(b.mac)"></span>
                 </td>
                 <td class="menu-cell">
                   <button type="button" class="kebab" @click="menuFor = menuFor === b.mac ? null : b.mac" :aria-label="'More for ' + b.name" :aria-expanded="menuFor === b.mac">⋮</button>
                   <div class="menu" x-show="menuFor === b.mac" x-cloak @click.outside="menuFor = null">
-                    <div class="menu-info"><span class="muted" x-text="(b.ip || 'no IP') + ' · ' + fwText(b.mac)"></span></div>
                     <button type="button" @click="menuFor = null; identify(b.mac)">Identify</button>
                     <div class="menu-info"><span class="muted">Power-on default</span><br><span x-text="powerOnText(b.mac)"></span></div>
                     <button type="button" x-show="fwImages.length" @click="menuFor = null; updateFirmware(b.mac)"

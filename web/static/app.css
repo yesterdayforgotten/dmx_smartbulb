@@ -177,16 +177,18 @@ input[type=number].ch { width: 5em; }
 .pill.warn { color: var(--fg); }
 .switch.big { font-size: 16px; font-weight: 600; }
 
-/* ---- denser bulbs table ---- */
-.bulbs-table { font-size: 14px; }
-.bulbs-table th, .bulbs-table td { padding: 2px 4px; white-space: nowrap; }
-.bulbs-table th { font-size: 11px; }
-.bulbs-table .lamp-btn { width: 20px; height: 20px; border-width: 1px; }
-.bulbs-table select, .bulbs-table input[type=number] { min-height: 28px; padding: 2px 4px; font-size: 13px; }
-.bulbs-table input[type=number].ch { width: 3.6em; margin-left: 3px; }
-.bulbs-table .name-cell { min-width: 0; max-width: 14em; overflow: hidden; text-overflow: ellipsis; }
-.bulbs-table .link { font-weight: 500; }
-.bulbs-table .kebab { width: 28px; height: 28px; font-size: 18px; }
+/* ---- bulbs table: one line per row ---- */
+.bulbs-table.slim th, .bulbs-table.slim td { padding: 1px 6px; white-space: nowrap; line-height: 1.2; }
+.bulbs-table.slim th { font-size: 12px; padding-bottom: 4px; }
+.bulbs-table.slim .lamp-btn { width: 20px; height: 20px; border-width: 1px; }
+.bulbs-table.slim select, .bulbs-table.slim input[type=number] { min-height: 26px; height: 26px; padding: 0 4px; font-size: 13px; }
+.bulbs-table.slim input[type=number].ch { width: 4em; }
+.bulbs-table.slim .row { gap: 4px; }
+.bulbs-table.slim .switch input { width: 16px; height: 16px; }
+.bulbs-table.slim .chip { padding: 1px 8px; font-size: 12px; }
+.bulbs-table.slim .kebab { width: 26px; height: 26px; font-size: 18px; }
+.bulbs-table.slim .link { font-weight: 600; margin-right: 6px; }
+.bulbs-table.slim .status-cell .small { margin-left: 4px; }
 .tick { width: 18px; height: 18px; accent-color: var(--accent); vertical-align: middle; }
 .chip.tiny { padding: 1px 8px; min-width: 2em; justify-content: center; font-size: 12px; }
 .sdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; background: var(--muted); vertical-align: 1px; }
