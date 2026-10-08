@@ -45,7 +45,7 @@
           <span class="dot"></span><span x-text="dmxPillText()"></span></button>
         <span class="pill" :class="onlineCount() === bulbList().length ? 'ok' : 'warn'"><span class="dot"></span>
           <span x-text="onlineCount() + '/' + bulbList().length + ' online'"></span></span>
-        <span class="pill" x-show="live && live.sender.latency_p95_ms != null" x-text="'p95 ' + (live ? live.sender.latency_p95_ms : '') + ' ms'"></span>
+        <span class="pill" x-show="live && live.sender.latency_p95_ms != null" title="Delay from a DMX change arriving to the command going out to the bulb (95% of commands are this fast or faster)" x-text="'delay ' + (live ? live.sender.latency_p95_ms : '') + ' ms'"></span>
         <span class="pill" x-show="live && live.sender.delivery_spread_p95_ms != null" title="How far apart bulbs receive the same DMX change (95th percentile)"
               x-text="'spread ' + (live ? live.sender.delivery_spread_p95_ms : '') + ' ms'"></span>
         <span class="pill bad" x-show="live && (live.input.malformed || live.input.oe || live.input.restarts)"><span class="dot"></span>
