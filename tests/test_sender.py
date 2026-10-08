@@ -99,6 +99,18 @@ def test_global_budget_and_largest_change_first():
     assert s.stats["budget_waits"] > 0
 
 
+def test_confirmed_bulbs_are_not_refreshed():
+    s, sent = make(refresh_s=2.0)
+    s.update_dmx(frame(c3=200), 0.0, 0.0)
+    s.tick(0.0)
+    for ip, cmd in sent:
+        if ip == "10.0.0.1":
+            s.on_reply(ip, echo(cmd), 0.01)          # only a confirms
+    sent.clear()
+    s.tick(2.05)
+    assert sorted(ip for ip, _ in sent) == ["10.0.0.2", "10.0.0.3"]   # b and c never confirmed
+
+
 def test_refresh_resends_after_refresh_s():
     s, sent = make(refresh_s=2.0)
     s.update_dmx(frame(c3=200), 0.0, 0.0)
@@ -350,3 +362,28 @@ def test_sync_mode_keeps_full_rate_when_interval_equals_frame_period():
         t += 0.0103                     # ticks that don't line up with the frame
     rate = sends.count("10.0.1.0") / 10
     assert rate == pytest.approx(15, abs=0.5)
+
+
+
+def test_poll_mismatch_triggers_restore():
+    """A confirmed bulb that is found showing something else (power blip) is
+    re-sent its state on the next refresh."""
+    s, sent = make(refresh_s=2.0)
+    s.update_dmx(frame(c3=200), 0.0, 0.0)
+    s.tick(0.0)
+    for ip, cmd in sent:
+        s.on_reply(ip, echo(cmd), 0.01)
+    assert s.bulbs[A].confirmed
+    # A poll shows bulb a back on a warm-white power-on default.
+    s.on_reply("10.0.0.1", {LIGHT: {"get_light_state": {"on_off": 1, "color_temp": 2700, "brightness": 80,
+                                                        "hue": 0, "saturation": 0, "err_code": 0}}}, 1.0)
+    assert not s.bulbs[A].confirmed
+    sent.clear()
+    s.tick(2.05)
+    assert [ip for ip, _ in sent] == ["10.0.0.1"]
+    # A poll that matches what was sent leaves a confirmed bulb alone.
+    b = s.bulbs[B]
+    h, sat, v = b.sent[1], b.sent[2], b.sent[3]
+    s.on_reply("10.0.0.2", {LIGHT: {"get_light_state": {"on_off": 1, "hue": 180 if sat == 0 else h, "saturation": sat,
+                                                        "brightness": v, "color_temp": 0, "err_code": 0}}}, 1.0)
+    assert b.confirmed

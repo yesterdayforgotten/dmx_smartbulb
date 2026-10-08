@@ -77,6 +77,11 @@ class FakeBulb(asyncio.DatagramProtocol):
         if svc is None:
             return {"err_code": -1, "err_msg": "module not support"}
         out = {}
+        if "get_light_state" in svc:
+            st = dict(self.state)
+            if not st["on_off"]:
+                st = {"on_off": 0, "dft_on_state": {k: v for k, v in self.state.items() if k != "on_off"}}
+            out["get_light_state"] = dict(st, err_code=0)
         if "transition_light_state" in svc:
             req = svc["transition_light_state"]
             self.commands += 1

@@ -11,7 +11,8 @@ Each tick (a new DMX frame, or every 10 ms):
 3. Bulbs with a pending change and whose interval has passed are sent in order
    of largest change first (plus a bonus for time waited, so nothing starves),
    while the global packets-per-second budget lasts.
-   Leftover budget refreshes bulbs whose last command is older than refresh_s.
+   Leftover budget re-sends to bulbs whose last command wasn't confirmed by a
+   reply within refresh_s (a confirmed bulb is known to be showing it).
 4. Replies (KL bulbs answer every command) mark a bulb online and measure its
    round-trip time. A command with no reply within REPLY_TIMEOUT counts as a
    miss; BACKOFF_AFTER misses in a row double that bulb's interval (up to
@@ -83,6 +84,22 @@ def state_key(state):
     return ("off",) if state[2] == 0 else ("temp", round(state[1]), state[2])
 
 
+def _light_key(st):
+    if not st.get("on_off", 1):
+        return ("off",)
+    if st.get("color_temp"):
+        return ("temp", st["color_temp"], st.get("brightness"))
+    return ("hsv", st.get("hue"), st.get("saturation"), st.get("brightness"))
+
+
+def polled_key(reply):
+    """The state a get_light_state reply reports, as a state_key, or None."""
+    try:
+        return _light_key(reply[kasa.LIGHTING]["get_light_state"])
+    except (KeyError, TypeError, AttributeError):
+        return None
+
+
 def reply_key(reply):
     """The state a light-state reply reports, as a state_key, or None."""
     try:
@@ -126,6 +143,7 @@ class BulbRuntime:
         self.hold_until = 0.0        # ignore DMX until then (identify)
         self.last_poll = -math.inf   # last status query (engine polls quiet bulbs)
         self.target_frame = None     # DMX frame time behind the current target
+        self.confirmed = False       # the bulb has echoed the state we last sent
 
     @property
     def dirty(self):
@@ -273,7 +291,13 @@ class Sender:
         rt.last_reply = t
         key = reply_key(reply)
         if key is None:
-            return                      # a status query's reply: proves it's online, nothing to match
+            # A status query's reply: proves it's online. If the bulb isn't
+            # showing what we last sent (e.g. it lost power and came back on
+            # its power-on default), un-confirm it so the refresh restores it.
+            polled = polled_key(reply)
+            if polled is not None and rt.sent is not None and polled != state_key(rt.sent):
+                rt.confirmed = False
+            return
         rt.replies += 1
         # Match the reply to the command it answers. Commands sent before it
         # whose replies never came were lost.
@@ -284,7 +308,9 @@ class Sender:
             lost = idx
             for _ in range(idx):
                 rt.pending.popleft()
-            sent_at, _, burst = rt.pending.popleft()
+            sent_at, matched_key, burst = rt.pending.popleft()
+            if rt.sent is not None and matched_key == state_key(rt.sent):
+                rt.confirmed = True
             if burst in self._bursts:
                 self._bursts[burst][1].append(t)
             sample = t - sent_at
@@ -341,6 +367,7 @@ class Sender:
                     fr["first"] = now if fr["first"] is None else fr["first"]
                     fr["last"] = now
         rt.sent = rt.target
+        rt.confirmed = False
         rt.dirty_since = None
         rt.last_send = now
         rt.sends += 1
@@ -394,7 +421,8 @@ class Sender:
                     sent += 1
         room = int(self.budget * period) - sent
         if room > 0:
-            stale = [rt for rt in active if not rt.dirty and now - rt.last_send >= max(self.refresh_s, rt.interval)]
+            stale = [rt for rt in active if not rt.dirty and not rt.confirmed
+                     and now - rt.last_send >= max(self.refresh_s, rt.interval)]
             stale.sort(key=lambda rt: rt.last_send)
             for rt in stale[:room]:
                 if self._send(rt, now, refresh=True):
@@ -429,7 +457,7 @@ class Sender:
 
         if self.tokens >= 1:
             stale = [rt for rt in self.bulbs.values()
-                     if rt.ip and rt.target is not None and not rt.dirty
+                     if rt.ip and rt.target is not None and not rt.dirty and not rt.confirmed
                      and now - rt.last_send >= max(self.refresh_s, rt.interval)]
             stale.sort(key=lambda rt: rt.last_send)
             for rt in stale:

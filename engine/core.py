@@ -130,8 +130,8 @@ class Engine:
                          st["sender"]["latency_p95_ms"])
 
     def _poll_quiet_bulbs(self, now):
-        """Ask bulbs that haven't been heard from lately for their status, so
-        online/offline is right even when nothing is being sent. A status query
+        """Ask bulbs that haven't been heard from lately for their light state,
+        so online/offline is right even when nothing is being sent. The query
         doesn't change the bulb; its reply updates last_reply like any other."""
         for rt in self.sender.bulbs.values():
             if not rt.ip:
@@ -139,7 +139,7 @@ class Engine:
             quiet = rt.last_reply is None or now - rt.last_reply > POLL_QUIET_S
             if quiet and now - rt.last_send > POLL_QUIET_S and now - rt.last_poll > POLL_QUIET_S:
                 rt.last_poll = now
-                self.transport.send(rt.ip, kasa.SYSINFO)
+                self.transport.send(rt.ip, kasa.LIGHT_STATE)
 
     async def rediscover(self):
         """Find bulbs by MAC and update any whose IP changed. Saves the config."""

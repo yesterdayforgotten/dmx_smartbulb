@@ -94,6 +94,9 @@ def preferred_state(hue, sat, bri, kelvin=0):
 
 
 SYSINFO = {"system": {"get_sysinfo": None}}
+# Light state only: a ~160-byte reply instead of get_sysinfo's ~1 KB. Used to
+# check quiet bulbs are still online without wasting airtime.
+LIGHT_STATE = {LIGHTING: {"get_light_state": {}}}
 
 
 def sysinfo_mac(info):
