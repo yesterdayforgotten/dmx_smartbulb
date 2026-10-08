@@ -8,7 +8,7 @@ import time
 
 from engine import kasa
 from engine.receiver import Receiver
-from engine.sender import Sender, percentile
+from engine.sender import HIST_EDGES_MS, Sender, histogram, percentile
 
 log = logging.getLogger("engine")
 
@@ -403,6 +403,8 @@ class Engine:
             "sender": {**s.stats,
                        "latency_p50_ms": ms(percentile(s.latency, 0.5)),
                        "latency_p95_ms": ms(percentile(s.latency, 0.95)),
+                       "latency_max_ms": ms(max(s.latency)) if s.latency else None,
+                       "latency_hist": {"edges_ms": HIST_EDGES_MS, "counts": histogram(s.latency)},
                        "queued_p95_ms": ms(percentile(s.queued, 0.95)),
                        "mode": s.mode,
                        "frame_period_ms": ms(s.frame_period) if s.mode == "sync" else None,

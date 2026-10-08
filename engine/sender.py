@@ -487,6 +487,21 @@ class Sender:
         return out
 
 
+HIST_EDGES_MS = (10, 20, 35, 50, 75, 100, 150, 250, 500, 1000)
+
+
+def histogram(values_s, edges_ms=HIST_EDGES_MS):
+    """Counts of values (seconds) in the buckets <edges[0], <edges[1], ... and >= the last edge."""
+    counts = [0] * (len(edges_ms) + 1)
+    for v in values_s:
+        ms = v * 1000
+        i = 0
+        while i < len(edges_ms) and ms >= edges_ms[i]:
+            i += 1
+        counts[i] += 1
+    return counts
+
+
 def percentile(values, p):
     if not values:
         return None

@@ -29,7 +29,7 @@ function app() {
     view: 'map', selectMode: false, selected: [], editLayout: false, sheet: null,
     found: null, discovering: false, newGroup: '', lookName: '',
     info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, menuPos: { x: 0, y: 0 }, groupPopup: null, groupSheet: null,
-    dmxPopup: false, assign: null,
+    dmxPopup: false, assign: null, delayPop: false,
     board: null, boardMode: 'color', boardSel: [], boardColor: { h: 30, s: 80, v: 70 }, boardTemp: 3200,
     boardColorMode: 'hsv', boardSpeed: 1, _boardTimers: {},
     color: { h: 30, s: 80, v: 70 }, temp: 3200, mode: 'hsv', _sendTimer: null,
@@ -408,6 +408,19 @@ function app() {
         ['IP', (this.cfg.bulbs[mac] || {}).ip || '–'],
       ];
       return out;
+    },
+    delayHist() {
+      const h = this.live && this.live.sender.latency_hist;
+      if (!h) return { total: 0, rows: [] };
+      const e = h.edges_ms, c = h.counts, total = c.reduce((a, b) => a + b, 0), top = Math.max(1, ...c);
+      const round = this.live.sender.frame_period_ms || 0;
+      const rows = c.map((n, i) => ({
+        label: i === 0 ? `<${e[0]}` : i === e.length ? `≥${e[e.length - 1]}` : `${e[i - 1]}–${e[i]}`,
+        count: n, pct: (100 * n) / top, slow: (i === e.length ? e[e.length - 1] : e[i]) > Math.max(round, 33) * 1.5,
+      }));
+      // Trim empty buckets at the high end, keeping at least up to the sync round.
+      while (rows.length > 4 && rows[rows.length - 1].count === 0) rows.pop();
+      return { total, rows };
     },
     rateSummary() {
       const snd = (this.settings && this.settings.sender) || {};

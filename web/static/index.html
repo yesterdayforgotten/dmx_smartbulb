@@ -45,7 +45,23 @@
           <span class="dot"></span><span x-text="dmxPillText()"></span></button>
         <span class="pill" :class="onlineCount() === bulbList().length ? 'ok' : 'warn'"><span class="dot"></span>
           <span x-text="onlineCount() + '/' + bulbList().length + ' online'"></span></span>
-        <span class="pill" x-show="live && live.sender.latency_p95_ms != null" title="Delay from a DMX change arriving to the command going out to the bulb (95% of commands are this fast or faster)" x-text="'delay ' + (live ? live.sender.latency_p95_ms : '') + ' ms'"></span>
+        <span class="pop-anchor" x-show="live && live.sender.latency_p95_ms != null"
+              @mouseenter="delayPop = true" @mouseleave="delayPop = false" @click.outside="delayPop = false">
+          <button type="button" class="pill pill-btn" @click="delayPop = !delayPop" :aria-expanded="delayPop"
+                  x-text="'delay ' + (live ? live.sender.latency_p95_ms : '') + ' ms'"></button>
+          <div class="hist-pop" x-show="delayPop" x-cloak role="tooltip">
+            <strong>DMX change → command sent</strong>
+            <p class="muted small">Over the last <span x-text="delayHist().total"></span> commands.
+              The pill shows the 95th percentile: 95% were this fast or faster.</p>
+            <template x-for="b in delayHist().rows" :key="b.label">
+              <div class="hist-row"><span class="mono small" x-text="b.label"></span>
+                <span class="hist-bar"><span :style="`width:${b.pct}%`" :class="b.slow ? 'slow' : ''"></span></span>
+                <span class="mono small" x-text="b.count"></span></div>
+            </template>
+            <p class="muted small mono" x-text="`median ${live.sender.latency_p50_ms} · p95 ${live.sender.latency_p95_ms} · max ${live.sender.latency_max_ms} ms`"></p>
+            <p class="muted small" x-show="live.sender.frame_period_ms" x-text="`Sync round is ${live.sender.frame_period_ms} ms, so most changes wait 0–${Math.round(live.sender.frame_period_ms)} ms.`"></p>
+          </div>
+        </span>
         <span class="pill" x-show="live && live.sender.delivery_spread_p95_ms != null" title="How far apart bulbs receive the same DMX change (95th percentile)"
               x-text="'spread ' + (live ? live.sender.delivery_spread_p95_ms : '') + ' ms'"></span>
         <span class="pill bad" x-show="live && (live.input.malformed || live.input.oe || live.input.restarts)"><span class="dot"></span>

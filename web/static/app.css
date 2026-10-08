@@ -203,3 +203,13 @@ input[type=number].ch { width: 5em; }
 .menu-info.stats { display: grid; gap: 1px; border-top: 0; }
 .menu-info .stat { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: baseline; }
 .menu-info .stat > :last-child { text-align: right; }
+.pop-anchor { position: relative; display: inline-block; }
+.hist-pop { position: absolute; top: calc(100% + 6px); right: 0; z-index: 60; width: 290px; max-width: calc(100vw - 32px);
+            background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.4); display: grid; gap: 4px; text-align: left; }
+.hist-pop p { margin: 2px 0; }
+.hist-row { display: grid; grid-template-columns: 5.5em 1fr 3em; gap: 6px; align-items: center; }
+.hist-row > :last-child { text-align: right; }
+.hist-bar { height: 10px; background: var(--panel); border-radius: 3px; overflow: hidden; }
+.hist-bar > span { display: block; height: 100%; background: var(--ok); }
+.hist-bar > span.slow { background: var(--warn); }

@@ -185,3 +185,10 @@ def test_wifi_priority_marks_packets(tmp_path):
         finally:
             fleet.stop()
     asyncio.run(go())
+
+
+def test_latency_histogram_buckets():
+    from engine.sender import histogram
+    counts = histogram([0.005, 0.010, 0.049, 0.050, 0.3, 2.0])
+    assert counts[0] == 1 and counts[1] == 1 and counts[3] == 1 and counts[4] == 1
+    assert counts[8] == 1 and counts[-1] == 1 and sum(counts) == 6
