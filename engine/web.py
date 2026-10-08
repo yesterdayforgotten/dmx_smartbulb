@@ -100,8 +100,9 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
                           "backoff": b["backoff"], "rtt": b["rtt_ms"], "interval": b["interval_ms"]}
         inp, snd = st["input"], st["sender"]
         return {"t": time.time(), "dmx": st["dmx_present"], "loss": st["dmx_lost_applied"],
+                "dmx_enabled": st["dmx_enabled"], "last_frame_age_s": st["last_frame_age_s"],
                 "input": {k: inp.get(k) for k in ("frames", "malformed", "error_bytes", "held", "oe", "fe",
-                                                  "restarts", "alive", "slots")},
+                                                  "restarts", "alive", "slots", "other_sc")},
                 "sender": {k: snd.get(k) for k in ("sent", "refreshes", "budget_waits", "latency_p50_ms",
                                                    "latency_p95_ms", "queued_p95_ms", "mode", "frame_period_ms",
                                                    "delivery_spread_p95_ms", "reply_spread_p95_ms")},
@@ -280,6 +281,12 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
                     b["follow"] = None
         change(apply)
         return {"ok": True}
+
+    @app.post("/api/dmx")
+    def dmx_toggle(request: Request, body: dict = Body(...)):
+        need_auth(request)
+        engine.set_dmx_enabled(body.get("enabled", True))
+        return {"ok": True, "enabled": engine.dmx_enabled}
 
     # ---- control and looks ---------------------------------------------------
 

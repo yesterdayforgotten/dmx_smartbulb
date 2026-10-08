@@ -22,13 +22,16 @@ function app() {
     loaded: false,
     session: { setup_needed: false, authenticated: false },
     pw: '', pw2: '', ssid: '', wifiPw: '', loginError: '',
-    tabs: [{ id: 'live', label: 'Live' }, { id: 'bulbs', label: 'Bulbs' }, { id: 'control', label: 'Control' }, { id: 'setup', label: 'Setup' }],
+    tabs: [{ id: 'live', label: 'Live' }, { id: 'bulbs', label: 'Bulbs' }, { id: 'board', label: 'Control Board' }, { id: 'setup', label: 'Setup' }],
     tab: 'live',
     cfg: null, warnings: [], nextFree: null, fwImages: [], settings: null,
     live: null, fps: 0, _frames: null, _framesT: 0, ws: null, _wsRetry: 1000,
     view: 'map', selectMode: false, selected: [], editLayout: false, sheet: null,
     found: null, discovering: false, newGroup: '', lookName: '',
-    info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, groupPopup: null,
+    info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, groupPopup: null, groupSheet: null,
+    dmxPopup: false,
+    board: null, boardMode: 'colour', boardSel: [], boardColour: { h: 30, s: 80, v: 70 }, boardTemp: 3200,
+    boardColourMode: 'hsv', boardSpeed: 1, _boardTimers: {},
     color: { h: 30, s: 80, v: 70 }, temp: 3200, mode: 'hsv', _sendTimer: null,
     powerOn: { k: 2700, v: 80 }, pwChange: { current: '', next: '' },
     toast: null, _toastTimer: null, _drag: null,
@@ -40,6 +43,7 @@ function app() {
     // ---------- startup, session ----------
     async init() {
       try { this.tab = localStorage.getItem('tab') || 'live'; } catch (e) { /* storage blocked */ }
+      if (!this.tabs.some((t) => t.id === this.tab)) this.tab = 'live';
       await this.refreshSession();
       this.loaded = true;
       if (this.session.authenticated) await this.start();
@@ -51,7 +55,6 @@ function app() {
     async start() {
       await this.loadState();
       this.connect();
-      this.$nextTick(() => this.drawWheel());
       this.$watch('selected', () => this.syncPowerOn());
       // Firmware, signal and power-on defaults change slowly; refresh them now
       // and then while the Bulbs tab is open (not on Setup, so edits survive).
@@ -84,10 +87,14 @@ function app() {
       this.cfg = null;
       await this.refreshSession();
     },
+    visibleTabs() {
+      const enttec = this.live && this.live.board && this.live.board.available;
+      return this.tabs.filter((t) => t.id !== 'board' || enttec || this.tab === 'board');
+    },
     setTab(t) {
       this.tab = t;
       try { localStorage.setItem('tab', t); } catch (e) { /* ignore */ }
-      if (t === 'control') this.$nextTick(() => this.drawWheel());
+      if (t === 'board') this.loadBoard().then(() => this.$nextTick(() => this.drawWheel(this.$refs.boardwheel)));
     },
 
     // ---------- API ----------
@@ -174,6 +181,21 @@ function app() {
       if (l.source === 'manual' || l.source === 'look') return 'M';
       return '';
     },
+    dmxPillClass() {
+      if (!this.live) return '';
+      if (!this.live.dmx_enabled) return 'warn';
+      return this.live.dmx ? 'ok' : 'bad';
+    },
+    dmxPillText() {
+      if (!this.live) return 'DMX';
+      if (!this.live.dmx_enabled) return 'DMX ignored';
+      if (this.live.dmx) return 'DMX ' + this.fps + ' fps';
+      return this.live.loss ? 'No DMX (loss action)' : 'No DMX';
+    },
+    async setDmxEnabled(on) {
+      const r = await this.act(this.api('POST', '/api/dmx', { enabled: on }), on ? 'DMX controls the bulbs again' : 'DMX is now ignored');
+      if (r && this.live) this.live.dmx_enabled = r.enabled;
+    },
     inputProblems() {
       const i = this.live ? this.live.input : {};
       const parts = [];
@@ -215,29 +237,56 @@ function app() {
       }
       this.sheet = mac;
     },
-    openControlFor(mac) { this.selected = [mac]; this.sheet = null; this.setTab('control'); },
+    closeSheet() { this.sheet = null; this.groupSheet = null; },
+    groupMembers(name) { return Object.keys(this.cfg.bulbs).filter((m) => this.cfg.bulbs[m].groups.includes(name)); },
+    groupSwatch(name) {
+      const m = this.groupMembers(name).find((x) => this.liveOf(x).state);
+      return m ? this.lampStyle(m, true) : 'background:#2a2f33';
+    },
+    openGroupSheet(name) {
+      const m = this.groupMembers(name).find((x) => this.liveOf(x).state);
+      const st = m && this.liveOf(m).state;
+      if (st) {
+        if (st.k != null) { this.temp = st.k; this.color.v = st.v; this.mode = 'temp'; }
+        else { this.color = { h: st.h, s: st.s, v: st.v }; this.mode = 'hsv'; }
+      }
+      this.sheet = null;
+      this.groupSheet = name;
+    },
     dragStart(ev, mac) {
       if (!this.editLayout) { this._drag = null; return; }
       ev.preventDefault();
-      const stage = this.$refs.stage;
-      const el = ev.currentTarget;
-      el.setPointerCapture(ev.pointerId);
+      // Listen on the window: the bulb's element is re-created when it moves
+      // between the tray and the stage, which would end an element-bound drag.
+      const startPos = this.cfg.bulbs[mac].pos;
       this._drag = { mac, moved: false };
-      const move = (e) => {
-        const r = stage.getBoundingClientRect();
-        const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-        const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
-        this._drag.moved = true;
-        this.cfg.bulbs[mac].pos = [Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000];
+      const inStage = (e) => {
+        const r = this.$refs.stage.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+        return { inside: x >= 0 && x <= 1 && y >= 0 && y <= 1, x, y };
       };
-      const up = async () => {
-        el.removeEventListener('pointermove', move);
-        el.removeEventListener('pointerup', up);
-        if (this._drag.moved) await this.act(this.api('PATCH', `/api/bulbs/${mac}`, { pos: this.cfg.bulbs[mac].pos }));
+      const move = (e) => {
+        const p = inStage(e);
+        this._drag.moved = true;
+        // Only onto the map while the pointer is over it; outside, it waits in the tray.
+        this.cfg.bulbs[mac].pos = p.inside ? [Math.round(p.x * 1000) / 1000, Math.round(p.y * 1000) / 1000] : null;
+      };
+      const up = async (e) => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', up);
+        if (this._drag && this._drag.moved) {
+          const pos = inStage(e).inside ? this.cfg.bulbs[mac].pos : null;    // dropped off the map = back to the tray
+          this.cfg.bulbs[mac].pos = pos;
+          if (JSON.stringify(pos) !== JSON.stringify(startPos)) {
+            await this.act(this.api('PATCH', `/api/bulbs/${mac}`, { pos }));
+          }
+        }
         setTimeout(() => { this._drag = null; }, 0);
       };
-      el.addEventListener('pointermove', move);
-      el.addEventListener('pointerup', up);
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', up);
     },
 
     // ---------- bulbs tab: list, status, firmware, power-on ----------
@@ -374,6 +423,7 @@ function app() {
     // ---------- control ----------
     targets(forPowerOn = false) {
       if (this.sheet && !forPowerOn) return [this.sheet];
+      if (this.groupSheet && !forPowerOn) return this.groupMembers(this.groupSheet);
       return this.selected.length ? [...this.selected] : Object.keys(this.cfg.bulbs);
     },
     targetLabel() {
@@ -397,8 +447,7 @@ function app() {
       if (p.k) { this.temp = p.k; this.sendTemp(); return; }
       this.mode = 'hsv'; this.color.h = p.h; this.color.s = p.s; this.sendColor();
     },
-    drawWheel() {
-      const c = this.$refs.wheel;
+    drawWheel(c) {
       if (!c) return;
       const ctx = c.getContext('2d');
       const n = c.width, r = n / 2;
@@ -415,9 +464,14 @@ function app() {
       }
       ctx.putImageData(img, 0, 0);
     },
+    wheelAt(ev) {
+      const rect = ev.currentTarget.getBoundingClientRect();
+      const dx = ev.clientX - rect.left - rect.width / 2, dy = ev.clientY - rect.top - rect.height / 2;
+      return { h: Math.round((Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360),
+        s: Math.round(Math.min(1, Math.sqrt(dx * dx + dy * dy) / (rect.width / 2)) * 100) };
+    },
     wheelPick(ev) {
-      const c = this.$refs.wheel;
-      const rect = c.getBoundingClientRect();
+      const rect = ev.currentTarget.getBoundingClientRect();
       const dx = ev.clientX - rect.left - rect.width / 2, dy = ev.clientY - rect.top - rect.height / 2;
       const d = Math.min(1, Math.sqrt(dx * dx + dy * dy) / (rect.width / 2));
       this.mode = 'hsv';
@@ -437,6 +491,57 @@ function app() {
       await this.act(this.api('DELETE', `/api/looks/${encodeURIComponent(name)}`), `Deleted ${name}`);
       await this.loadState();
     },
+
+    // ---------- control board ----------
+    async loadBoard() {
+      const b = await this.act(this.api('GET', '/api/board'));
+      if (b) {
+        this.board = b;
+        if (!this.boardSel.length) this.boardSel = b.fixtures.map((f) => f.channel);
+      }
+    },
+    toggleBoardSel(ch) {
+      const i = this.boardSel.indexOf(ch);
+      if (i >= 0) this.boardSel.splice(i, 1); else this.boardSel.push(ch);
+    },
+    boardSwatch(f) {
+      const h = Math.round(f.h / 255 * 360), sat = Math.round(f.s / 255 * 100), v = Math.round(f.v / 255 * 100);
+      return this.cssFromState({ h, s: sat, v }, true);
+    },
+    boardThrottle(key, fn) {
+      clearTimeout(this._boardTimers[key]);
+      this._boardTimers[key] = setTimeout(fn, 40);
+    },
+    boardFader(ch, value) {
+      this.boardThrottle('ch' + ch, async () => {
+        await this.act(this.api('POST', '/api/board/channels', { values: { [ch]: value } }));
+        if (this.board) this.board.active = true;
+      });
+    },
+    boardWheelPick(ev) {
+      const p = this.wheelAt(ev);
+      this.boardColourMode = 'hsv';
+      this.boardColour.h = p.h; this.boardColour.s = p.s;
+      if (this.boardColour.v === 0) this.boardColour.v = 70;
+      this.boardSendColour();
+    },
+    boardSendColour() {
+      if (!this.boardSel.length) { this.say('Pick at least one fixture', true); return; }
+      const body = this.boardColourMode === 'temp'
+        ? { channels: this.boardSel, k: this.boardTemp, v: this.boardColour.v }
+        : { channels: this.boardSel, ...this.boardColour };
+      this.boardThrottle('colour', async () => {
+        await this.act(this.api('POST', '/api/board/colour', body));
+        if (this.board) this.board.active = true;
+      });
+    },
+    async boardShow(name) {
+      await this.act(this.api('POST', '/api/board/show', { name, speed: this.boardSpeed }));
+      await this.loadBoard();
+    },
+    async boardStopShow() { await this.act(this.api('POST', '/api/board/stop-show')); await this.loadBoard(); },
+    async boardBlackout() { await this.act(this.api('POST', '/api/board/blackout'), 'Blackout'); await this.loadBoard(); },
+    async boardRelease() { await this.act(this.api('POST', '/api/board/release'), 'Released: no longer sending DMX'); await this.loadBoard(); },
 
     // ---------- setup ----------
     async saveSettings() {

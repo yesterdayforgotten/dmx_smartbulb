@@ -163,3 +163,16 @@ input[type=number].ch { width: 5em; }
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 14px; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+
+/* ---- sheets and control board ---- */
+.sheet-wheel { width: 220px; height: 220px; }
+.fixture-list { display: grid; gap: 6px; max-height: 360px; overflow: auto; padding-right: 4px; }
+.fixture-list .switch { gap: 8px; }
+.faders { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.fader-group { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: grid; gap: 6px; }
+.show-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+
+.pill-btn { border: 0; cursor: pointer; font: inherit; }
+.pill-btn:hover { filter: brightness(1.2); }
+.pill.warn { color: var(--fg); }
+.switch.big { font-size: 16px; font-weight: 600; }

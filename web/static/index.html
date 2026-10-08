@@ -9,7 +9,7 @@
 <script src="app.js"></script>
 <script defer src="vendor/alpine.min.js"></script>
 </head>
-<body x-data="app()" x-init="init()">
+<body x-data="app()" x-init="init()" @keydown.escape.window="closeSheet(); groupPopup = null; menuFor = null; dmxPopup = false">
 
 <!-- ================= first run / login ================= -->
 <template x-if="loaded && !session.authenticated">
@@ -41,8 +41,8 @@
     <div class="wrap">
       <div class="brand">Stage Bulbs</div>
       <div class="health">
-        <span class="pill" :class="live && live.dmx ? 'ok' : 'bad'"><span class="dot"></span>
-          <span x-text="live && live.dmx ? 'DMX ' + fps + ' fps' : (live && live.loss ? 'No DMX (loss action)' : 'No DMX')"></span></span>
+        <button type="button" class="pill pill-btn" :class="dmxPillClass()" @click="dmxPopup = true" title="DMX input details and on/off">
+          <span class="dot"></span><span x-text="dmxPillText()"></span></button>
         <span class="pill" :class="onlineCount() === bulbList().length ? 'ok' : 'warn'"><span class="dot"></span>
           <span x-text="onlineCount() + '/' + bulbList().length + ' online'"></span></span>
         <span class="pill" x-show="live && live.sender.latency_p95_ms != null" x-text="'p95 ' + (live ? live.sender.latency_p95_ms : '') + ' ms'"></span>
@@ -52,7 +52,7 @@
           <span x-text="inputProblems()"></span></span>
       </div>
       <nav class="tabs" aria-label="Sections">
-        <template x-for="t in tabs" :key="t.id">
+        <template x-for="t in visibleTabs()" :key="t.id">
           <button type="button" @click="setTab(t.id)" :aria-current="tab === t.id ? 'page' : null" x-text="t.label"></button>
         </template>
       </nav>
@@ -147,6 +147,23 @@
           </template>
         </div>
       </template>
+      <h2>Looks</h2>
+      <section class="card stack">
+        <form class="row" @submit.prevent="saveLook()">
+          <input id="lookname" type="text" placeholder="Look name, e.g. House lights" x-model="lookName">
+          <button class="btn" type="submit" x-text="selected.length ? `Save ${selected.length} selected` : 'Save all bulbs'"></button>
+        </form>
+        <p class="muted small" style="margin:0" x-show="!Object.keys(cfg.looks).length">No looks yet. Set the bulbs how you want them, then save.</p>
+        <template x-for="name in Object.keys(cfg.looks)" :key="name">
+          <div class="row">
+            <strong x-text="name" style="min-width:8em"></strong>
+            <span class="muted" x-text="Object.keys(cfg.looks[name]).length + ' bulbs'"></span>
+            <span style="flex:1"></span>
+            <button class="btn small primary" type="button" @click="recallLook(name)">Recall</button>
+            <button class="btn small danger" type="button" @click="deleteLook(name)">Delete</button>
+          </div>
+        </template>
+      </section>
     </div>
 
     <!-- ================= BULBS ================= -->
@@ -242,6 +259,7 @@
       <section class="card stack">
         <template x-for="name in Object.keys(cfg.groups)" :key="name">
           <div class="row">
+            <button type="button" class="lamp-btn" :style="groupSwatch(name)" @click="openGroupSheet(name)" :aria-label="'Control group ' + name" title="Control this group"></button>
             <strong x-text="name" style="min-width:8em"></strong>
             <label class="field inline"><span>Shared channel</span>
               <input type="number" min="1" max="510" :value="cfg.groups[name].channel ?? ''" @change="putGroup(name, $event.target.value === '' ? null : +$event.target.value)"></label>
@@ -270,47 +288,85 @@
       </section>
     </div>
 
-    <!-- ================= CONTROL ================= -->
-    <div x-show="tab === 'control'">
-      <div class="row" style="margin-bottom:12px">
-        <span x-text="'Controlling: ' + targetLabel()"></span>
+    <!-- ================= CONTROL BOARD ================= -->
+    <div x-show="tab === 'board'">
+      <div class="row" style="margin-bottom:10px">
+        <span class="pill" :class="board && board.active ? 'ok' : ''"><span class="dot"></span>
+          <span x-text="board && board.active ? 'Sending DMX through the Enttec' : 'Not sending (any change starts it)'"></span></span>
+        <span class="muted small" x-show="board && board.error" x-text="board && board.error"></span>
         <span style="flex:1"></span>
-        <button class="chip" type="button" @click="selected = []">All bulbs</button>
-        <template x-for="g in Object.keys(cfg.groups)"><button class="chip" type="button" @click="selectGroup(g)" x-text="g"></button></template>
+        <button class="btn small" type="button" @click="boardBlackout()">Blackout</button>
+        <button class="btn small" type="button" @click="boardRelease()" :disabled="!(board && board.active)" title="Stop sending, so a real desk can take over">Release</button>
       </div>
-      <div class="control">
-        <canvas class="wheel" width="520" height="520" x-ref="wheel" @pointerdown="wheelPick($event)" @pointermove="$event.buttons && wheelPick($event)"></canvas>
+      <p class="muted" style="margin:0 0 12px">Sends real DMX out of the Enttec, so it travels the whole chain (shield, receiver, engine, bulbs) just like a desk.
+        Bulbs follow it only if their DMX toggle is on; a manual colour holds until the DMX changes.</p>
+
+      <div class="row" style="margin-bottom:12px">
+        <button class="btn small" type="button" :aria-pressed="boardMode === 'colour'" @click="boardMode = 'colour'; $nextTick(() => drawWheel($refs.boardwheel))">Colour</button>
+        <button class="btn small" type="button" :aria-pressed="boardMode === 'faders'" @click="boardMode = 'faders'">Faders</button>
+        <button class="btn small" type="button" :aria-pressed="boardMode === 'shows'" @click="boardMode = 'shows'">Test shows</button>
+      </div>
+
+      <template x-if="board && !board.fixtures.length">
+        <div class="warn-box">No patched fixtures yet. Give bulbs a channel (Solo) or a group a shared channel on the Bulbs tab.</div>
+      </template>
+
+      <!-- Colour mode -->
+      <div x-show="boardMode === 'colour'" class="control">
         <div class="stack">
-          <label class="field"><span x-text="'Brightness ' + color.v + '%'"></span>
-            <input type="range" min="0" max="100" x-model.number="color.v" @input="sendColor()"></label>
-          <label class="field"><span x-text="'White ' + temp + ' K'"></span>
-            <input type="range" class="temp-range" min="2500" max="6500" step="50" x-model.number="temp" @input="sendTemp()"></label>
+          <canvas class="wheel" width="520" height="520" x-ref="boardwheel" @pointerdown="boardWheelPick($event)" @pointermove="$event.buttons && boardWheelPick($event)"></canvas>
+          <label class="field"><span x-text="'Brightness ' + boardColour.v + '%'"></span>
+            <input id="bbright" type="range" min="0" max="100" x-model.number="boardColour.v" @input="boardSendColour()"></label>
+          <label class="field"><span x-text="'White ' + boardTemp + ' K'"></span>
+            <input id="btemp" type="range" class="temp-range" min="2500" max="6500" step="50" x-model.number="boardTemp" @input="boardColourMode = 'temp'; boardSendColour()"></label>
+        </div>
+        <div class="stack">
           <div class="row">
-            <span class="swatch" style="width:34px;height:34px" :style="cssFromState(mode === 'temp' ? {k: temp, v: color.v} : color, true)"></span>
-            <span class="muted" x-text="mode === 'temp' ? temp + ' K' : `hue ${color.h}°, sat ${color.s}%`"></span>
-            <span style="flex:1"></span>
-            <button class="btn" type="button" x-show="targets().length === 1" @click="identify(targets()[0])">Identify</button>
+            <strong>Fixtures</strong><span style="flex:1"></span>
+            <button class="chip" type="button" @click="boardSel = board ? board.fixtures.map(f => f.channel) : []">All</button>
+            <button class="chip" type="button" @click="boardSel = []">None</button>
           </div>
-          <p class="muted" style="margin:0">A manual colour holds until that bulb's DMX channels change ("DMX wins"). Bulbs with DMX switched off keep it.</p>
+          <div class="fixture-list">
+            <template x-for="f in (board ? board.fixtures : [])" :key="f.channel">
+              <label class="switch"><input type="checkbox" :checked="boardSel.includes(f.channel)" @change="toggleBoardSel(f.channel)">
+                <span x-text="f.label"></span><span class="muted mono small" x-text="'ch ' + f.channel"></span></label>
+            </template>
+          </div>
+          <p class="muted small" style="margin:0" x-text="boardSel.length + ' fixture(s) selected'"></p>
         </div>
       </div>
 
-      <h2>Looks</h2>
-      <section class="card stack">
-        <form class="row" @submit.prevent="saveLook()">
-          <input id="lookname" type="text" placeholder="Look name, e.g. House lights" x-model="lookName">
-          <button class="btn" type="submit" x-text="selected.length ? `Save ${selected.length} selected` : 'Save all bulbs'"></button>
-        </form>
-        <template x-for="name in Object.keys(cfg.looks)" :key="name">
-          <div class="row">
-            <strong x-text="name" style="min-width:8em"></strong>
-            <span class="muted" x-text="Object.keys(cfg.looks[name]).length + ' bulbs'"></span>
-            <span style="flex:1"></span>
-            <button class="btn small primary" type="button" @click="recallLook(name)">Recall</button>
-            <button class="btn small danger" type="button" @click="deleteLook(name)">Delete</button>
+      <!-- Fader mode -->
+      <div x-show="boardMode === 'faders'" class="faders">
+        <template x-for="f in (board ? board.fixtures : [])" :key="f.channel">
+          <div class="fader-group">
+            <div class="row"><strong x-text="f.label"></strong><span class="muted mono small" x-text="'ch ' + f.channel + '–' + (f.channel + 2)"></span>
+              <span class="swatch" :style="boardSwatch(f)"></span></div>
+            <label class="field"><span x-text="'Hue ' + f.h"></span>
+              <input type="range" min="0" max="255" :value="f.h" @input="f.h = +$event.target.value; boardFader(f.channel, +$event.target.value)"></label>
+            <label class="field"><span x-text="'Saturation ' + f.s"></span>
+              <input type="range" min="0" max="255" :value="f.s" @input="f.s = +$event.target.value; boardFader(f.channel + 1, +$event.target.value)"></label>
+            <label class="field"><span x-text="'Brightness ' + f.v"></span>
+              <input type="range" min="0" max="255" :value="f.v" @input="f.v = +$event.target.value; boardFader(f.channel + 2, +$event.target.value)"></label>
           </div>
         </template>
-      </section>
+      </div>
+
+      <!-- Test shows -->
+      <div x-show="boardMode === 'shows'" class="stack">
+        <div class="show-grid">
+          <template x-for="sh in (board ? board.shows : [])" :key="sh.id">
+            <button class="btn" type="button" :aria-pressed="board && board.show === sh.id" @click="boardShow(sh.id)" x-text="sh.label"></button>
+          </template>
+        </div>
+        <label class="field" style="max-width:420px"><span x-text="'Speed ×' + boardSpeed"></span>
+          <input id="bspeed" type="range" min="0.25" max="4" step="0.25" x-model.number="boardSpeed" @change="board && board.show && boardShow(board.show)"></label>
+        <div class="row">
+          <button class="btn" type="button" @click="boardStopShow()" :disabled="!(board && board.show)">Stop show</button>
+          <span class="muted" x-text="board && board.show ? 'Running: ' + board.shows.find(x => x.id === board.show).label : 'No show running'"></span>
+        </div>
+        <p class="muted small" style="margin:0">Tip: watch the header's "spread" while a show runs to see how in sync the bulbs are.</p>
+      </div>
     </div>
 
     <!-- ================= SETUP ================= -->
@@ -389,6 +445,31 @@
     </div>
   </main>
 
+  <!-- ================= DMX input popup ================= -->
+  <template x-if="dmxPopup && live">
+    <div class="backdrop" @click.self="dmxPopup = false">
+      <div class="sheet stack" role="dialog" aria-modal="true" aria-label="DMX input">
+        <div class="row"><strong>DMX input</strong><span style="flex:1"></span>
+          <button class="btn small" type="button" @click="dmxPopup = false">Close</button></div>
+        <label class="switch big"><input id="dmxenabled" type="checkbox" :checked="live.dmx_enabled" @change="setDmxEnabled($event.target.checked)">
+          <span x-text="live.dmx_enabled ? 'DMX controls the bulbs' : 'DMX is ignored: bulbs keep their current state'"></span></label>
+        <p class="muted small" style="margin:0">Turning DMX off lets you set bulbs by hand without the desk overriding them. It turns back on by itself if the Pi restarts.</p>
+        <dl class="facts">
+          <dt>Signal</dt><dd x-text="live.dmx ? 'receiving' : (live.last_frame_age_s != null ? 'none for ' + live.last_frame_age_s + ' s' : 'never received')"></dd>
+          <dt>Frames/s</dt><dd x-text="live.dmx ? fps : 0"></dd>
+          <dt>Frames received</dt><dd x-text="live.input.frames"></dd>
+          <dt>Channels per frame</dt><dd x-text="live.input.slots || '—'"></dd>
+          <dt>Bad frames</dt><dd x-text="live.input.malformed"></dd>
+          <dt>Held glitch frames</dt><dd x-text="live.input.held"></dd>
+          <dt>Other start codes</dt><dd x-text="live.input.other_sc || 0"></dd>
+          <dt>UART overruns</dt><dd x-text="live.input.oe"></dd>
+          <dt>Receiver restarts</dt><dd x-text="live.input.restarts"></dd>
+          <dt>When DMX stops</dt><dd x-text="({hold: 'hold the last state', look: 'recall a look', blackout: 'blackout'})[cfg.dmx_loss.mode] + (cfg.dmx_loss.mode !== 'hold' ? ' after ' + cfg.dmx_loss.after_s + ' s' : '')"></dd>
+        </dl>
+      </div>
+    </div>
+  </template>
+
   <!-- ================= group picker ================= -->
   <template x-if="groupPopup && cfg.bulbs[groupPopup]">
     <div class="backdrop" @click.self="groupPopup = null">
@@ -408,36 +489,47 @@
     </div>
   </template>
 
-  <!-- ================= bulb sheet ================= -->
-  <template x-if="sheet && cfg.bulbs[sheet]">
-    <div class="backdrop" @click.self="sheet = null">
-      <div class="sheet stack" role="dialog" aria-modal="true" :aria-label="cfg.bulbs[sheet].name">
+  <!-- ================= bulb / group sheet ================= -->
+  <template x-if="(sheet && cfg.bulbs[sheet]) || (groupSheet && cfg.groups[groupSheet])">
+    <div class="backdrop" @click.self="closeSheet()">
+      <div class="sheet stack" role="dialog" aria-modal="true" :aria-label="sheet ? cfg.bulbs[sheet].name : 'Group ' + groupSheet">
         <div class="row">
-          <span class="swatch" style="width:28px;height:28px" :style="lampStyle(sheet, true)"></span>
-          <strong x-text="cfg.bulbs[sheet].name"></strong>
-          <span class="muted mono" x-text="channelLabel(cfg.bulbs[sheet])"></span>
+          <span class="swatch" style="width:28px;height:28px" :style="sheet ? lampStyle(sheet, true) : groupSwatch(groupSheet)"></span>
+          <strong x-text="sheet ? cfg.bulbs[sheet].name : 'Group: ' + groupSheet"></strong>
+          <span class="muted mono" x-text="sheet ? channelLabel(cfg.bulbs[sheet]) : groupMembers(groupSheet).length + ' bulbs'"></span>
           <span style="flex:1"></span>
-          <button class="btn small" type="button" @click="sheet = null">Close</button>
+          <button class="btn small" type="button" @click="closeSheet()">Close</button>
         </div>
-        <div class="row muted" style="font-size:14px">
-          <span x-text="isOnline(sheet) ? 'Online' : 'Offline'"></span>·
-          <span x-text="sourceLabel(sheet)"></span>·
-          <span x-text="stateText(sheet)"></span>
-        </div>
-        <label class="field"><span>Name</span>
-          <input id="sheetname" type="text" :value="cfg.bulbs[sheet].name" @change="editBulb(sheet, {name: $event.target.value})"></label>
-        <dl class="facts">
-          <dt>IP</dt><dd class="mono" x-text="cfg.bulbs[sheet].ip || '—'"></dd>
-          <dt>MAC</dt><dd class="mono" x-text="sheet"></dd>
-          <dt>Model</dt><dd x-text="(info[sheet] && info[sheet].model) || '—'"></dd>
-          <dt>Firmware</dt><dd x-text="fwText(sheet)"></dd>
-          <dt>Signal</dt><dd x-text="info[sheet] && info[sheet].rssi != null ? info[sheet].rssi + ' dBm' : '—'"></dd>
-          <dt>Round trip</dt><dd x-text="liveOf(sheet).rtt != null ? liveOf(sheet).rtt + ' ms' : '—'"></dd>
-          <dt>Power-on</dt><dd x-text="powerOnText(sheet)"></dd>
-          <dt>Groups</dt><dd><button type="button" class="chip" @click="groupPopup = sheet"
-               x-text="cfg.bulbs[sheet].groups.length ? cfg.bulbs[sheet].groups.join(', ') : 'None'"></button></dd>
-        </dl>
-        <label class="switch"><input type="checkbox" :checked="cfg.bulbs[sheet].dmx" @change="editBulb(sheet, {dmx: $event.target.checked})"> Follows DMX</label>
+
+        <template x-if="sheet">
+          <div class="stack">
+            <div class="row muted" style="font-size:14px">
+              <span x-text="isOnline(sheet) ? 'Online' : 'Offline'"></span>·
+              <span x-text="sourceLabel(sheet)"></span>·
+              <span x-text="stateText(sheet)"></span>
+            </div>
+            <label class="field"><span>Name</span>
+              <input id="sheetname" type="text" :value="cfg.bulbs[sheet].name" @change="editBulb(sheet, {name: $event.target.value})"></label>
+            <dl class="facts">
+              <dt>IP</dt><dd class="mono" x-text="cfg.bulbs[sheet].ip || '—'"></dd>
+              <dt>MAC</dt><dd class="mono" x-text="sheet"></dd>
+              <dt>Model</dt><dd x-text="(info[sheet] && info[sheet].model) || '—'"></dd>
+              <dt>Firmware</dt><dd x-text="fwText(sheet)"></dd>
+              <dt>Signal</dt><dd x-text="info[sheet] && info[sheet].rssi != null ? info[sheet].rssi + ' dBm' : '—'"></dd>
+              <dt>Round trip</dt><dd x-text="liveOf(sheet).rtt != null ? liveOf(sheet).rtt + ' ms' : '—'"></dd>
+              <dt>Power-on</dt><dd x-text="powerOnText(sheet)"></dd>
+              <dt>Groups</dt><dd><button type="button" class="chip" @click="groupPopup = sheet"
+                   x-text="cfg.bulbs[sheet].groups.length ? cfg.bulbs[sheet].groups.join(', ') : 'None'"></button></dd>
+            </dl>
+            <label class="switch"><input type="checkbox" :checked="cfg.bulbs[sheet].dmx" @change="editBulb(sheet, {dmx: $event.target.checked})"> Follows DMX</label>
+          </div>
+        </template>
+        <template x-if="groupSheet">
+          <p class="muted small" style="margin:0" x-text="groupMembers(groupSheet).map(m => cfg.bulbs[m].name).join(', ') || 'No bulbs in this group yet.'"></p>
+        </template>
+
+        <canvas class="wheel sheet-wheel" width="400" height="400" x-init="$nextTick(() => drawWheel($el))"
+                @pointerdown="wheelPick($event)" @pointermove="$event.buttons && wheelPick($event)"></canvas>
         <label class="field"><span x-text="'Brightness ' + color.v + '%'"></span>
           <input type="range" min="0" max="100" x-model.number="color.v" @input="sendColor()"></label>
         <label class="field"><span x-text="'White ' + temp + ' K'"></span>
@@ -446,8 +538,9 @@
           <template x-for="p in presets"><button class="btn small" type="button" @click="applyPreset(p)" x-text="p.label"></button></template>
         </div>
         <div class="row">
-          <button class="btn" type="button" @click="identify(sheet)">Identify</button>
-          <button class="btn" type="button" @click="openControlFor(sheet)">Colour wheel…</button>
+          <button class="btn" type="button" @click="sheet ? identify(sheet) : groupMembers(groupSheet).forEach(m => identify(m))"
+                  x-text="sheet ? 'Identify' : 'Identify all'"></button>
+          <span class="muted small">A manual colour holds until the bulb's DMX changes ("DMX wins").</span>
         </div>
       </div>
     </div>

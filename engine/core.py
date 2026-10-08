@@ -35,6 +35,7 @@ class Engine:
         self.last_seq = 0
         self.last_frame = None       # monotonic time of the newest frame
         self.loss_applied = False
+        self.dmx_enabled = True      # off: frames are still received and counted, but drive nothing
         self.ip_changes = []         # (time, name, old ip, new ip), for the UI
         self.info = {}               # mac -> model, hw_ver, fw, rssi, alias, power_on (not saved)
         from engine.board import Board
@@ -108,8 +109,10 @@ class Engine:
             if self.loss_applied:
                 log.info("DMX is back")
                 self.loss_applied = False
-            self.sender.update_dmx(data, t, now)
-        self._check_loss(now)
+            if self.dmx_enabled:
+                self.sender.update_dmx(data, t, now)
+        if self.dmx_enabled:
+            self._check_loss(now)
         self.sender.tick(now)
 
     def dmx_present(self, now):
@@ -236,6 +239,20 @@ class Engine:
         self.sender.apply_config(self.cfg)
         return self.cfg
 
+    def set_dmx_enabled(self, enabled):
+        """Let DMX drive the bulbs, or ignore it (bulbs keep their current state).
+        Not saved: the engine always starts with DMX enabled."""
+        enabled = bool(enabled)
+        if enabled == self.dmx_enabled:
+            return
+        self.dmx_enabled = enabled
+        log.warning("DMX input %s from the web UI", "enabled" if enabled else "IGNORED")
+        if enabled:
+            # Re-apply the current frame so DMX-following bulbs catch up at once.
+            seq, t, data = self.receiver.snapshot()
+            if seq:
+                self.sender.update_dmx(data, t, time.monotonic())
+
     def restart_receiver(self):
         """Switch to the configured input (after a settings change)."""
         loop = asyncio.get_running_loop()
@@ -354,6 +371,8 @@ class Engine:
         ms = lambda v: None if v is None else round(v * 1000, 1)  # noqa: E731
         return {
             "dmx_present": self.dmx_present(now),
+            "dmx_enabled": self.dmx_enabled,
+            "last_frame_age_s": None if self.last_frame is None else round(now - self.last_frame, 1),
             "dmx_lost_applied": self.loss_applied,
             "input": self.receiver.stats(),
             "sender": {**s.stats,

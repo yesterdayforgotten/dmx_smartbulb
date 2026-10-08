@@ -218,3 +218,22 @@ def test_firmware_served_publicly_and_update_refused_while_dmx_live(tmp_path):
             r = await h.client.post(f"/api/bulbs/{mac}/firmware", json={})
             assert r.status_code == 409 and "DMX is live" in r.json()["detail"]
     run(go())
+
+
+def test_dmx_can_be_ignored_and_restored(tmp_path):
+    async def go():
+        async with Harness(tmp_path) as h:
+            await h.login()
+            await asyncio.sleep(0.6)                       # replayed DMX has set the bulbs
+            r = await h.client.post("/api/dmx", json={"enabled": False})
+            assert r.json()["enabled"] is False
+            mac = list(h.engine.cfg["bulbs"])[0]
+            await h.client.post("/api/control", json={"macs": [mac], "state": {"k": 2700, "v": 40}})
+            await asyncio.sleep(0.5)                       # DMX keeps flowing but must not override
+            assert h.engine.sender.bulbs[mac].target == ("temp", 2700, 40)
+            st = (await h.client.get("/api/state")).json()
+            assert st["live"]["dmx_enabled"] is False and st["live"]["input"]["frames"] > 0
+            await h.client.post("/api/dmx", json={"enabled": True})
+            await asyncio.sleep(0.3)
+            assert h.engine.dmx_enabled
+    run(go())
