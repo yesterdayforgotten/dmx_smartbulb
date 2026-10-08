@@ -474,6 +474,8 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         img = firmware.image_for(info.get("model"), info.get("hw_ver"), firmware_dir)
         if not img:
             raise HTTPException(400, f"no firmware on this Pi for {info.get('model')} hw {info.get('hw_ver')}")
+        if (info.get("sw_ver") or "").split(" ")[0] == img["version"].split(" ")[0]:
+            raise HTTPException(409, f"already up to date ({img['version'].split(' ')[0]})")
         ip = engine.cfg["bulbs"][mac]["ip"]
         url = f"http://{local_ip_for(ip)}:{engine.cfg['web_port']}/firmware/{img['file']}"
         fw_jobs[mac] = {"state": "running", "ratio": 0, "message": f"{info.get('sw_ver')} -> {img['version']}",

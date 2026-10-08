@@ -9,7 +9,7 @@
 <script src="app.js"></script>
 <script defer src="vendor/alpine.min.js"></script>
 </head>
-<body x-data="app()" x-init="init()" @keydown.escape.window="closeSheet(); groupPopup = null; menuFor = null; dmxPopup = false; assign = null; bulkGroups = false">
+<body x-data="app()" x-init="init()" @keydown.escape.window="closeConfirm(false); closeSheet(); groupPopup = null; menuFor = null; dmxPopup = false; assign = null; bulkGroups = false">
 
 <!-- ================= first run / login ================= -->
 <template x-if="loaded && !session.authenticated">
@@ -207,6 +207,10 @@
         <strong x-text="`${selected.length} selected`"></strong>
         <button class="btn small" type="button" @click="bulkGroups = true">Groups…</button>
         <button class="btn small" type="button" @click="openAssign()">Assign channels…</button>
+        <select class="small-select" aria-label="Set channel mode for the selected bulbs" @change="$event.target.value && setModes([...selected], $event.target.value); $event.target.value = ''">
+          <option value="">Mode…</option><option value="hsi">HSI (3 channels)</option><option value="hsic">HSIC (4 channels)</option>
+        </select>
+        <button class="btn small danger" type="button" @click="removeBulbs([...selected])">Remove…</button>
         <span style="flex:1"></span>
         <button class="btn small" type="button" @click="selected = []">Clear selection</button>
       </div>
@@ -246,9 +250,10 @@
                       <template x-for="g in Object.keys(cfg.groups)"><option :value="'g:' + g" :selected="b.follow === g" x-text="'Group: ' + g"></option></template>
                       <option value="none" :selected="!b.follow && b.channel == null">Unpatched</option>
                     </select>
-                    <input type="number" class="ch" min="1" max="510" :id="'ch-' + b.mac" x-show="!b.follow && b.channel != null" :value="b.channel ?? ''"
+                    <input type="number" class="ch" min="1" :max="513 - bulbSize(b)" :id="'ch-' + b.mac" x-show="!b.follow && b.channel != null" :value="b.channel ?? ''"
                            @change="editBulb(b.mac, {channel: $event.target.value === '' ? null : +$event.target.value})" aria-label="Start channel">
                     <span class="muted mono small" x-show="b.follow" x-text="b.follow && cfg.groups[b.follow] && cfg.groups[b.follow].channel ? 'ch ' + cfg.groups[b.follow].channel : 'no ch'"></span>
+                    <span class="mode-tag" x-show="b.mode === 'hsic'" title="HSIC: 4 channels (hue, saturation, brightness, color temperature)">HSIC</span>
                   </div>
                 </td>
                 <td><label class="switch"><input type="checkbox" :checked="b.dmx" @change="editBulb(b.mac, {dmx: $event.target.checked})" :aria-label="'DMX for ' + b.name"></label></td>
@@ -386,7 +391,7 @@
           <div class="fader-group">
             <div class="row"><span class="swatch" :style="boardSwatch(f)"></span><strong x-text="f.label" :title="f.label"></strong></div>
             <div class="vfaders">
-              <template x-for="[key, off, name] in [['h', 0, 'Hue'], ['s', 1, 'Sat'], ['v', 2, 'Bri']]" :key="key">
+              <template x-for="[key, off, name] in (f.size === 4 ? [['h', 0, 'Hue'], ['s', 1, 'Sat'], ['v', 2, 'Bri'], ['c', 3, 'CCT']] : [['h', 0, 'Hue'], ['s', 1, 'Sat'], ['v', 2, 'Bri']])" :key="key">
                 <label class="vfader"><span class="mono small" x-text="f[key]"></span>
                   <input type="range" min="0" max="255" :value="f[key]" :aria-label="f.label + ' ' + name + ' (ch ' + (f.channel + off) + ')'"
                          @input="f[key] = +$event.target.value; boardFader(f.channel + off, +$event.target.value)">
@@ -559,9 +564,25 @@
         </template>
       </div>
       <div class="menu-info"><span class="muted">Power-on default</span><br><span x-text="powerOnText(menuFor)"></span></div>
-      <button type="button" x-show="fwImages.length" @click="const m = menuFor; menuFor = null; updateFirmware(m)"
-              x-text="fwUpdatable(menuFor) ? 'Update firmware' : 'Re-install firmware'"></button>
+      <button type="button" @click="const m = menuFor; menuFor = null; setModes([m], cfg.bulbs[m].mode === 'hsic' ? 'hsi' : 'hsic')"
+              x-text="cfg.bulbs[menuFor].mode === 'hsic' ? 'Switch to HSI (3 channels)' : 'Switch to HSIC (4 channels: + color temp)'"></button>
+      <button type="button" x-show="fwUpdatable(menuFor)" @click="const m = menuFor; menuFor = null; updateFirmware(m)">Update firmware</button>
       <button type="button" class="danger" @click="const b = bulbList().find(x => x.mac === menuFor); menuFor = null; removeBulb(b)">Remove</button>
+    </div>
+  </template>
+
+  <!-- ================= confirmation ================= -->
+  <template x-if="confirmDlg">
+    <div class="backdrop confirm-backdrop" @click.self="closeConfirm(false)">
+      <div class="sheet stack confirm" role="alertdialog" aria-modal="true" :aria-label="confirmDlg.title">
+        <strong x-text="confirmDlg.title"></strong>
+        <p class="muted" style="margin:0" x-show="confirmDlg.body" x-text="confirmDlg.body"></p>
+        <div class="row" style="justify-content:flex-end">
+          <button class="btn" type="button" @click="closeConfirm(false)">Cancel</button>
+          <button class="btn" :class="confirmDlg.danger ? 'danger-btn' : 'primary'" type="button" x-init="$nextTick(() => $el.focus())"
+                  @click="closeConfirm(true)" x-text="confirmDlg.ok"></button>
+        </div>
+      </div>
     </div>
   </template>
 
@@ -571,14 +592,14 @@
       <div class="sheet stack" role="dialog" aria-modal="true" aria-label="Assign DMX channels">
         <div class="row"><strong>Assign DMX channels</strong><span style="flex:1"></span>
           <button class="btn small" type="button" @click="assign = null">Cancel</button></div>
-        <p class="muted small" style="margin:0">Each bulb takes 3 channels (hue, saturation, brightness). The selected bulbs get
+        <p class="muted small" style="margin:0">Each bulb takes 3 channels (hue, saturation, brightness), or 4 in HSIC mode (plus color temperature). The selected bulbs get
           consecutive addresses from the start channel, skipping channels other bulbs and groups already use, and are set to Solo.</p>
         <label class="field" style="max-width:200px"><span>Start at channel</span>
           <input id="assignstart" type="number" min="1" max="510" x-model.number="assign.start"></label>
         <div class="assign-preview">
           <template x-for="row in assignPreview()" :key="row.mac">
             <div class="row nowrap"><span x-text="row.name" class="assign-name"></span>
-              <span class="mono" :class="row.ch ? '' : 'warn-text'" x-text="row.ch ? 'ch ' + row.ch + '–' + (row.ch + 2) : 'no room'"></span></div>
+              <span class="mono" :class="row.ch ? '' : 'warn-text'" x-text="row.ch ? 'ch ' + row.ch + '–' + (row.ch + row.size - 1) + (row.size === 4 ? ' (HSIC)' : '') : 'no room'"></span></div>
           </template>
         </div>
         <div class="row"><button class="btn primary" type="button" @click="autoAssign()" :disabled="assignPreview().some(r => !r.ch)"

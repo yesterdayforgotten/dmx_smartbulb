@@ -29,7 +29,7 @@ function app() {
     view: 'map', selectMode: false, selected: [], editLayout: false, sheet: null,
     found: null, discovering: false, newGroup: '', lookName: '',
     info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, menuPos: { x: 0, y: 0 }, groupPopup: null, groupSheet: null,
-    dmxPopup: false, assign: null, delayPop: false, bulkGroups: false,
+    dmxPopup: false, assign: null, delayPop: false, bulkGroups: false, confirmDlg: null,
     board: null, boardMode: 'color', boardSel: [], boardColor: { h: 30, s: 80, v: 70 }, boardTemp: 3200,
     boardColorMode: 'hsv', boardSpeed: 1, boardShowTarget: 'all', _boardTimers: {},
     color: { h: 30, s: 80, v: 70 }, temp: 3200, mode: 'hsv', _sendTimer: null,
@@ -174,7 +174,10 @@ function app() {
     onlineCount() { return this.live ? this.live.online : 0; },
     channelLabel(b) {
       if (b.follow) { const g = this.cfg.groups[b.follow]; return `${b.follow} (${g && g.channel ? g.channel : '–'})`; }
-      return b.channel ? `${b.channel}–${b.channel + 2}` : 'unpatched';
+      return b.channel ? `${b.channel}–${b.channel + this.bulbSize(b) - 1}` : 'unpatched';
+    },
+    groupSize(name) {
+      return Object.values(this.cfg.bulbs).some((b) => b.follow === name && b.mode === 'hsic') ? 4 : 3;
     },
     sourceLabel(mac) {
       const s = this.liveOf(mac).source;
@@ -406,13 +409,41 @@ function app() {
       const groups = b.groups.includes(g) ? b.groups.filter((x) => x !== g) : [...b.groups, g];
       return this.editBulb(b.mac, { groups });
     },
+    askConfirm({ title, body = '', ok = 'OK', danger = false }) {
+      // A modal yes/no; resolves true on confirm, false on cancel/Escape/backdrop.
+      if (this.confirmDlg) this.confirmDlg.resolve(false);
+      return new Promise((resolve) => { this.confirmDlg = { title, body, ok, danger, resolve }; });
+    },
+    closeConfirm(answer) {
+      const d = this.confirmDlg;
+      this.confirmDlg = null;
+      if (d) d.resolve(answer);
+    },
     async removeBulb(b) {
-      if (this._confirmRemove !== b.mac) { this._confirmRemove = b.mac; this.say(`Choose Remove again to remove ${b.name}`); return; }
-      this._confirmRemove = null;
-      await this.act(this.api('DELETE', `/api/bulbs/${b.mac}`), `Removed ${b.name}`);
-      this.selected = this.selected.filter((m) => m !== b.mac);
+      return this.removeBulbs([b.mac]);
+    },
+    async removeBulbs(macs) {
+      const names = macs.map((m) => (this.cfg.bulbs[m] || {}).name || m);
+      const one = macs.length === 1;
+      const yes = await this.askConfirm({
+        title: one ? `Remove ${names[0]}?` : `Remove ${macs.length} bulbs?`,
+        body: (one ? '' : names.slice(0, 8).join(', ') + (names.length > 8 ? ` and ${names.length - 8} more` : '') + '. ')
+          + 'Their channel, groups and stage position are forgotten. The bulbs themselves are not changed; Find bulbs can add them back.',
+        ok: one ? 'Remove' : `Remove ${macs.length}`, danger: true,
+      });
+      if (!yes) return;
+      const run = async () => { for (const m of macs) await this.api('DELETE', `/api/bulbs/${m}`); };
+      await this.act(run(), one ? `Removed ${names[0]}` : `Removed ${macs.length} bulbs`);
+      this.selected = this.selected.filter((m) => !macs.includes(m));
       await this.loadState();
     },
+    setModes(macs, mode) {
+      const run = async () => { for (const m of macs) await this.api('PATCH', `/api/bulbs/${m}`, { mode }); };
+      const label = mode === 'hsic' ? 'HSIC (4 channels)' : 'HSI (3 channels)';
+      return this.act(run(), `${macs.length === 1 ? (this.cfg.bulbs[macs[0]] || {}).name : macs.length + ' bulbs'} set to ${label}`)
+        .then(() => this.loadState());
+    },
+    bulbSize(b) { return b.mode === 'hsic' ? 4 : 3; },
     bulbStats(mac) {
       const l = this.liveOf(mac), i = this.info[mac] || {};
       const pct = l.sends ? (100 * Math.min(l.replies, l.sends) / l.sends).toFixed(1) + '%' : '–';
@@ -425,6 +456,7 @@ function app() {
         ['Power', i.power_mw != null ? (i.power_mw / 1000).toFixed(1) + ' W' : '–'],
         ['IP', (this.cfg.bulbs[mac] || {}).ip || '–'],
         ['MAC', mac.match(/../g).join(':')],
+        ['Channels', (this.cfg.bulbs[mac] || {}).mode === 'hsic' ? 'HSIC (4)' : 'HSI (3)'],
         ['Firmware', ((i.fw || '?').split(' ')[0]) + (this.fwUpdatable(mac) ? ' ⬆' : ''), this.fwUpdatable(mac) ? 'warn-text' : '', this.fwTitle(mac)],
       ];
       return out;
@@ -463,17 +495,20 @@ function app() {
     assignPreview() {
       // Mirror the server: skip channels used by bulbs that aren't being reassigned, and by groups.
       const used = new Set();
-      const mark = (ch) => { if (ch) for (let c = ch; c < ch + 3; c++) used.add(c); };
+      const mark = (ch, n) => { if (ch) for (let c = ch; c < ch + n; c++) used.add(c); };
       for (const [mac, b] of Object.entries(this.cfg.bulbs)) {
         if (this.selected.includes(mac)) continue;
-        mark(b.follow ? (this.cfg.groups[b.follow] || {}).channel : b.channel);
+        if (b.follow) mark((this.cfg.groups[b.follow] || {}).channel, this.groupSize(b.follow));
+        else mark(b.channel, this.bulbSize(b));
       }
-      for (const g of Object.values(this.cfg.groups)) mark(g.channel);
+      for (const [name, g] of Object.entries(this.cfg.groups)) mark(g.channel, this.groupSize(name));
       let ch = Math.max(1, this.assign ? this.assign.start || 1 : 1);
       return this.bulbList().filter((b) => this.selected.includes(b.mac)).map((b) => {
-        while (ch <= 510 && (used.has(ch) || used.has(ch + 1) || used.has(ch + 2))) ch++;
-        const row = { mac: b.mac, name: b.name, ch: ch <= 510 ? ch : null };
-        if (row.ch) { mark(ch); ch += 3; }
+        const n = this.bulbSize(b), last = 513 - n;
+        const busy = (c) => { for (let i = 0; i < n; i++) if (used.has(c + i)) return true; return false; };
+        while (ch <= last && busy(ch)) ch++;
+        const row = { mac: b.mac, name: b.name, ch: ch <= last ? ch : null, size: n };
+        if (row.ch) { mark(ch, n); ch += n; }
         return row;
       });
     },
@@ -540,8 +575,15 @@ function app() {
     },
     fwJob(mac) { return this.live && this.live.firmware && this.live.firmware[mac]; },
     async updateFirmware(mac) {
-      if (this._confirmFw !== mac) { this._confirmFw = mac; this.say('Choose Update firmware again to confirm (the bulb goes dark for about a minute)'); return; }
-      this._confirmFw = null;
+      const b = this.cfg.bulbs[mac] || {}, inf = this.info[mac] || {};
+      const img = this.fwImages.find((i) => i.model === inf.model && i.hw_ver === inf.hw_ver);
+      const yes = await this.askConfirm({
+        title: `Update ${b.name || mac}?`,
+        body: `Firmware ${(inf.fw || '?').split(' ')[0]} → ${img ? img.version.split(' ')[0] : 'latest'}. `
+          + 'The bulb downloads the update from this Pi, restarts and is dark for about a minute. Don\'t switch its power off meanwhile.',
+        ok: 'Update firmware',
+      });
+      if (!yes) return;
       await this.act(this.api('POST', `/api/bulbs/${mac}/firmware`, {}), 'Updating firmware…');
     },
 
