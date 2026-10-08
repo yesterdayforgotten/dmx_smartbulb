@@ -22,7 +22,21 @@ static uint32_t last_report = 0;
 static char cmd[16];
 static int cmd_len = 0;
 
+static void on_wifi_event(WiFiEvent_t event, WiFiEventInfo_t info) {
+  if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+    // 201 no AP found, 15 4-way handshake timeout (wrong password?), 2/202 auth problems, 8 left.
+    Serial.printf("\n  disconnected, reason %d", info.wifi_sta_disconnected.reason);
+  } else if (event == ARDUINO_EVENT_WIFI_STA_CONNECTED) {
+    Serial.printf("\n  associated with the AP on channel %d", info.wifi_sta_connected.channel);
+  }
+}
+
 static void connect_wifi() {
+  static bool hooked = false;
+  if (!hooked) {
+    WiFi.onEvent(on_wifi_event);
+    hooked = true;
+  }
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);            // mains-powered bulbs don't doze; neither should we
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -39,8 +53,11 @@ static void connect_wifi() {
     udp.begin(PORT);
   } else {
     // wl_status_t: 1 no SSID found, 4 connect failed (often a wrong password), 6 disconnected.
-    Serial.printf("couldn't join the WiFi (status %d); networks visible on 2.4 GHz:\n", WiFi.status());
+    Serial.printf("couldn't join the WiFi (status %d); scanning 2.4 GHz:\n", WiFi.status());
+    WiFi.disconnect();
+    delay(200);
     int n = WiFi.scanNetworks();
+    Serial.printf("  scan result %d networks\n", n);
     for (int i = 0; i < n; i++) {
       Serial.printf("  %-32s ch %2d  rssi %4d  auth %d%s\n", WiFi.SSID(i).c_str(), WiFi.channel(i), WiFi.RSSI(i),
                     WiFi.encryptionType(i), WiFi.SSID(i) == WIFI_SSID ? "  <- ours" : "");
