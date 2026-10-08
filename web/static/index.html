@@ -309,17 +309,17 @@
           <span class="swatch" x-show="powerOn.mode !== 'last'" :style="cssFromState(powerOn.mode === 'white' ? {k: powerOn.k, v: powerOn.v} : {h: powerOn.h, s: powerOn.s, v: powerOn.v}, true)"></span>
         </div>
         <div class="row" x-show="powerOn.mode === 'white'">
-          <label class="field" style="flex:1; min-width:180px"><span x-text="'White ' + powerOn.k + ' K'"></span>
+          <label class="field" style="flex:1; min-width:180px"><span class="val-label">White <input type="number" class="val-box wide" min="2500" max="6500" step="50" x-model.number="powerOn.k" @change="powerOn.k = Math.min(6500, Math.max(2500, Math.round((+$el.value || 0) / 50) * 50)); previewPowerOn()" aria-label="White"> K</span>
             <input id="pok" type="range" class="temp-range" min="2500" max="6500" step="50" x-model.number="powerOn.k" @input="previewPowerOn()"></label>
         </div>
         <div class="row" x-show="powerOn.mode === 'color'">
-          <label class="field" style="flex:1; min-width:180px"><span x-text="'Hue ' + powerOn.h + '°'"></span>
+          <label class="field" style="flex:1; min-width:180px"><span class="val-label">Hue <input type="number" class="val-box" min="0" max="359" step="1" x-model.number="powerOn.h" @change="powerOn.h = Math.min(359, Math.max(0, Math.round((+$el.value || 0) / 1) * 1)); previewPowerOn()" aria-label="Hue"> °</span>
             <input id="poh" type="range" class="hue-range" min="0" max="359" x-model.number="powerOn.h" @input="previewPowerOn()"></label>
-          <label class="field" style="flex:1; min-width:140px"><span x-text="'Saturation ' + powerOn.s + '%'"></span>
+          <label class="field" style="flex:1; min-width:140px"><span class="val-label">Saturation <input type="number" class="val-box" min="0" max="100" step="1" x-model.number="powerOn.s" @change="powerOn.s = Math.min(100, Math.max(0, Math.round((+$el.value || 0) / 1) * 1)); previewPowerOn()" aria-label="Saturation"> %</span>
             <input id="pos" type="range" min="0" max="100" x-model.number="powerOn.s" @input="previewPowerOn()"></label>
         </div>
         <div class="row" x-show="powerOn.mode !== 'last'">
-          <label class="field" style="flex:1; min-width:180px"><span x-text="'Brightness ' + powerOn.v + '%'"></span>
+          <label class="field" style="flex:1; min-width:180px"><span class="val-label">Brightness <input type="number" class="val-box" min="1" max="100" step="1" x-model.number="powerOn.v" @change="powerOn.v = Math.min(100, Math.max(1, Math.round((+$el.value || 0) / 1) * 1)); previewPowerOn()" aria-label="Brightness"> %</span>
             <input id="pov" type="range" min="1" max="100" x-model.number="powerOn.v" @input="previewPowerOn()"></label>
         </div>
         <p class="muted small" style="margin:0" x-show="powerOn.mode === 'last'">The bulb comes back on as it was when the power went off.</p>
@@ -355,15 +355,15 @@
       <div x-show="boardMode === 'color'" class="control">
         <div class="stack">
           <canvas class="wheel" width="520" height="520" x-ref="boardwheel" x-init="$nextTick(() => drawWheel($el))" @pointerdown="boardWheelPick($event)" @pointermove="$event.buttons && boardWheelPick($event)"></canvas>
-          <label class="field"><span x-text="'Hue ' + Math.round(boardColor.h) + '°'"></span>
+          <label class="field"><span class="val-label">Hue <input type="number" class="val-box" min="0" max="359" step="1" x-model.number="boardColor.h" @change="boardColor.h = Math.min(359, Math.max(0, Math.round((+$el.value || 0) / 1) * 1)); boardSendColor()" aria-label="Hue"> °</span>
             <input id="bhue" type="range" class="hue-range" min="0" max="359" x-model.number="boardColor.h"
                    @input="boardSendColor()"></label>
-          <label class="field"><span x-text="'Saturation ' + Math.round(boardColor.s) + '%'"></span>
+          <label class="field"><span class="val-label">Saturation <input type="number" class="val-box" min="0" max="100" step="1" x-model.number="boardColor.s" @change="boardColor.s = Math.min(100, Math.max(0, Math.round((+$el.value || 0) / 1) * 1)); boardSendColor()" aria-label="Saturation"> %</span>
             <input id="bsat" type="range" class="sat-range" min="0" max="100" x-model.number="boardColor.s" :style="satTrack(boardColor.h)"
                    @input="boardSendColor()"></label>
-          <label class="field"><span x-text="'Intensity ' + boardColor.v + '%'"></span>
+          <label class="field"><span class="val-label">Intensity <input type="number" class="val-box" min="0" max="100" step="1" x-model.number="boardColor.v" @change="boardColor.v = Math.min(100, Math.max(0, Math.round((+$el.value || 0) / 1) * 1)); boardSendColor()" aria-label="Intensity"> %</span>
             <input id="bbright" type="range" min="0" max="100" x-model.number="boardColor.v" @input="boardSendColor()"></label>
-          <label class="field"><span x-text="'Color temperature ' + boardTemp + ' K'"></span>
+          <label class="field"><span class="val-label">Color temperature <input type="number" class="val-box wide" min="2500" max="6500" step="50" x-model.number="boardTemp" @change="boardTemp = Math.min(6500, Math.max(2500, Math.round((+$el.value || 0) / 50) * 50)); boardSendCct()" aria-label="Color temperature"> K</span>
             <input id="btemp" type="range" class="temp-range" min="2500" max="6500" step="50" x-model.number="boardTemp" @input="boardSendCct()"
                    :disabled="!boardHsicSelected()"></label>
           <p class="muted small" style="margin:0" x-text="boardHsicSelected()
@@ -397,7 +397,9 @@
             <div class="row"><span class="swatch" :style="fixtureSwatch(f)"></span><strong x-text="f.label" :title="f.label"></strong></div>
             <div class="vfaders">
               <template x-for="[key, off, name] in (f.size === 4 ? [['h', 0, 'Hue'], ['s', 1, 'Saturation'], ['v', 2, 'Intensity'], ['c', 3, 'Color temp']] : [['h', 0, 'Hue'], ['s', 1, 'Saturation'], ['v', 2, 'Intensity']])" :key="key">
-                <label class="vfader"><span class="mono small" x-text="f[key]"></span>
+                <label class="vfader"><input type="number" class="val-box fader-box" min="0" max="255" :value="f[key]"
+                         :aria-label="f.label + ' ' + name + ' value'"
+                         @change="f[key] = Math.min(255, Math.max(0, Math.round(+$el.value || 0))); $el.value = f[key]; boardFader(f.channel + off, f[key])">
                   <input type="range" min="0" max="255" :value="f[key]" :aria-label="f.label + ' ' + name + ' (ch ' + (f.channel + off) + ')'"
                          @input="f[key] = +$event.target.value; boardFader(f.channel + off, +$event.target.value)">
                   <span class="fname" x-text="name"></span><span class="mono small muted" x-text="f.channel + off"></span></label>
@@ -417,7 +419,7 @@
                 <option :value="g" :disabled="!n" x-text="`Group ${g} (${n} fixture${n === 1 ? '' : 's'})`"></option>
               </template>
             </select></label>
-          <label class="field" style="flex:1; min-width:180px; max-width:320px"><span x-text="'Speed ×' + boardSpeed"></span>
+          <label class="field" style="flex:1; min-width:180px; max-width:320px"><span class="val-label">Speed × <input type="number" class="val-box" min="0.25" max="4" step="0.25" x-model.number="boardSpeed" @change="boardSpeed = Math.min(4, Math.max(0.25, Math.round((+$el.value || 0) / 0.25) * 0.25)); boardRunOn(boardShowTarget) &amp;&amp; boardShow(boardRunOn(boardShowTarget).name)" aria-label="Speed ×"> </span>
             <input id="bspeed" type="range" min="0.25" max="4" step="0.25" x-model.number="boardSpeed"
                    @change="boardRunOn(boardShowTarget) && boardShow(boardRunOn(boardShowTarget).name)"></label>
         </div>
@@ -696,9 +698,9 @@
 
         <canvas class="wheel sheet-wheel" width="400" height="400" x-init="$nextTick(() => drawWheel($el))"
                 @pointerdown="wheelPick($event)" @pointermove="$event.buttons && wheelPick($event)"></canvas>
-        <label class="field"><span x-text="'Brightness ' + color.v + '%'"></span>
+        <label class="field"><span class="val-label">Brightness <input type="number" class="val-box" min="0" max="100" step="1" x-model.number="color.v" @change="color.v = Math.min(100, Math.max(0, Math.round((+$el.value || 0) / 1) * 1)); sendColor()" aria-label="Brightness"> %</span>
           <input type="range" min="0" max="100" x-model.number="color.v" @input="sendColor()"></label>
-        <label class="field"><span x-text="'White ' + temp + ' K'"></span>
+        <label class="field"><span class="val-label">White <input type="number" class="val-box wide" min="2500" max="6500" step="50" x-model.number="temp" @change="temp = Math.min(6500, Math.max(2500, Math.round((+$el.value || 0) / 50) * 50)); sendTemp()" aria-label="White"> K</span>
           <input type="range" class="temp-range" min="2500" max="6500" step="50" x-model.number="temp" @input="sendTemp()"></label>
         <div class="row">
           <template x-for="p in presets"><button class="btn small" type="button" @click="applyPreset(p)" x-text="p.label"></button></template>
