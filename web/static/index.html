@@ -250,9 +250,9 @@
                       <template x-for="g in Object.keys(cfg.groups)"><option :value="'g:' + g" :selected="b.follow === g" x-text="'Group: ' + g"></option></template>
                       <option value="none" :selected="!b.follow && b.channel == null">Unpatched</option>
                     </select>
-                    <input type="number" class="ch" min="1" :max="513 - bulbSize(b)" :id="'ch-' + b.mac" x-show="!b.follow && b.channel != null" :value="b.channel ?? ''"
+                    <input type="number" class="ch" :class="overlaps.includes(b.mac) && 'clash'" min="1" :max="513 - bulbSize(b)" :id="'ch-' + b.mac" x-show="!b.follow && b.channel != null" :value="b.channel ?? ''"
                            @change="editBulb(b.mac, {channel: $event.target.value === '' ? null : +$event.target.value})" aria-label="Start channel">
-                    <span class="muted mono small" x-show="b.follow" x-text="b.follow && cfg.groups[b.follow] && cfg.groups[b.follow].channel ? 'ch ' + cfg.groups[b.follow].channel : 'no ch'"></span>
+                    <span class="mono small" :class="overlaps.includes(b.mac) ? 'bad-text' : 'muted'" x-show="b.follow" x-text="b.follow && cfg.groups[b.follow] && cfg.groups[b.follow].channel ? 'ch ' + cfg.groups[b.follow].channel : 'no ch'"></span>
                     <span class="mode-tag" :class="b.mode === 'hsic' && 'hsic'" x-text="b.mode === 'hsic' ? 'HSIC' : 'HSI'"
                           :title="b.mode === 'hsic' ? 'HSIC: 4 channels (hue, saturation, brightness, color temperature)' : 'HSI: 3 channels (hue, saturation, brightness)'"></span>
                   </div>

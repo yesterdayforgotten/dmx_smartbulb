@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from engine import auth, firmware
-from engine.config import FOOTPRINT, ConfigError, next_free_channel, patch_conflicts
+from engine.config import FOOTPRINT, ConfigError, next_free_channel, overlapping_bulbs, patch_conflicts
 
 STATIC = Path(__file__).resolve().parent.parent / "web" / "static"
 COOKIE = "dmxs"
@@ -168,6 +168,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
     def state(request: Request):
         need_auth(request)
         return {"config": public_config(engine.cfg), "warnings": patch_conflicts(engine.cfg),
+                "overlaps": sorted(overlapping_bulbs(engine.cfg)),
                 "next_free_channel": next_free_channel(engine.cfg), "live": live_payload(),
                 "info": engine.info,
                 "firmware_images": firmware.cached(firmware_dir)}

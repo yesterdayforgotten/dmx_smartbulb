@@ -68,7 +68,28 @@ def test_patch_conflicts():
                               C: {"ip": "10.0.0.3", "follow": "G", "name": "c"},
                               "50C7BF000004": {"ip": "10.0.0.4", "follow": "G", "name": "d"}}})
     w = patch_conflicts(cfg)
-    assert w == ["Overlap: channel 3 is used by a, b"]   # c and d share group G on purpose
+    assert w == ["Overlap at channel 3: a (ch 1-3), b (ch 3-5)"]   # c and d share group G on purpose
+
+
+def test_overlap_rules():
+    from engine.config import overlapping_bulbs
+    def check(bulbs, groups=None):
+        cfg = validate({"bulbs": bulbs, "groups": groups or {}})
+        return patch_conflicts(cfg), overlapping_bulbs(cfg)
+    # Same type, same start: one shared address, fine.
+    w, bad = check({A: {"name": "a", "channel": 1}, B: {"name": "b", "channel": 1}})
+    assert w == [] and bad == set()
+    # Different types on the same start: HSIC reads channel 4 too.
+    w, bad = check({A: {"name": "a", "channel": 1}, B: {"name": "b", "channel": 1, "mode": "hsic"}})
+    assert w == ["Overlap at channel 1: a (ch 1-3), b (ch 1-4)"] and bad == {A, B}
+    # HSIC running into the next bulb.
+    w, bad = check({A: {"name": "a", "channel": 1, "mode": "hsic"}, B: {"name": "b", "channel": 4}})
+    assert w == ["Overlap at channel 4: a (ch 1-4), b (ch 4-6)"] and bad == {A, B}
+    # A group's channel counts even with no followers; a solo bulb on the same start shares it.
+    w, bad = check({A: {"name": "a", "channel": 7}}, {"G": {"channel": 7}})
+    assert w == [] and bad == set()
+    w, bad = check({A: {"name": "a", "channel": 8}}, {"G": {"channel": 7}})
+    assert w == ["Overlap at channel 8: group G (ch 7-9), a (ch 8-10)"] and bad == {A}
 
 
 def test_next_free_channel():

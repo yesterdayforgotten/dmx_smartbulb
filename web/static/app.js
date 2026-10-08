@@ -24,7 +24,7 @@ function app() {
     pw: '', pw2: '', ssid: '', wifiPw: '', loginError: '',
     tabs: [{ id: 'live', label: 'Live' }, { id: 'bulbs', label: 'Bulbs' }, { id: 'board', label: 'Control Board' }, { id: 'setup', label: 'Setup' }],
     tab: 'live',
-    cfg: null, warnings: [], nextFree: null, fwImages: [], settings: null,
+    cfg: null, warnings: [], overlaps: [], nextFree: null, fwImages: [], settings: null,
     live: null, fps: 0, _frames: null, _framesT: 0, ws: null, _wsRetry: 1000,
     view: 'map', selectMode: false, selected: [], editLayout: false, sheet: null,
     found: null, discovering: false, newGroup: '', lookName: '',
@@ -130,7 +130,7 @@ function app() {
     },
     async loadState() {
       const s = await this.api('GET', '/api/state');
-      this.cfg = s.config; this.warnings = s.warnings; this.nextFree = s.next_free_channel;
+      this.cfg = s.config; this.warnings = s.warnings; this.nextFree = s.next_free_channel; this.overlaps = s.overlaps || [];
       this.fwImages = s.firmware_images; this.live = s.live; this.info = s.info || {};
       // The DMX input is set up on the Pi (config file / setup script), not here.
       this.settings = JSON.parse(JSON.stringify({

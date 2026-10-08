@@ -228,23 +228,63 @@ def address_size(cfg, mac):
     return group_size(cfg, b["follow"]) if b["follow"] else FOOTPRINT[b["mode"]]
 
 
-def patch_conflicts(cfg):
-    """Warnings (not errors) for bulbs whose channel ranges overlap. Bulbs
-    following the same group share a range on purpose and aren't reported."""
-    users = {}  # channel -> set of owners ("group X" or a bulb name)
+def _addresses(cfg):
+    """{(start, channels): {"owners": [labels], "macs": [bulbs]}}. Things on the
+    same start with the same size share one address on purpose (two bulbs on
+    channel 1, or a group's followers) and count as one."""
+    addrs = {}
+    for name, g in cfg["groups"].items():
+        if g["channel"] is not None:
+            a = addrs.setdefault((g["channel"], group_size(cfg, name)), {"owners": [], "macs": []})
+            a["owners"].append(f"group {name}")
     for mac, b in cfg["bulbs"].items():
         ch = bulb_channel(cfg, mac)
         if ch is None:
             continue
-        owner = f"group {b['follow']}" if b["follow"] else (b["name"] or mac)
-        for c in range(ch, ch + address_size(cfg, mac)):
-            users.setdefault(c, set()).add(owner)
+        a = addrs.setdefault((ch, address_size(cfg, mac)), {"owners": [], "macs": []})
+        if not b["follow"]:
+            a["owners"].append(b["name"] or mac)
+        a["macs"].append(mac)
+    return addrs
+
+
+def overlapping_bulbs(cfg):
+    """MACs of bulbs whose address partly overlaps a different address."""
+    addrs = _addresses(cfg)
+    by_channel = {}
+    for key in addrs:
+        for c in range(key[0], key[0] + key[1]):
+            by_channel.setdefault(c, set()).add(key)
+    bad = set()
+    for keys in by_channel.values():
+        if len(keys) > 1:
+            for key in keys:
+                bad.update(addrs[key]["macs"])
+    return bad
+
+
+def patch_conflicts(cfg):
+    """Warnings (not errors) for addresses whose channel ranges overlap without
+    being the same address (same start and same size share on purpose)."""
+    addrs = _addresses(cfg)
+    by_channel = {}
+    for key in addrs:
+        for c in range(key[0], key[0] + key[1]):
+            by_channel.setdefault(c, set()).add(key)
     warnings, seen = [], set()
-    for c in sorted(users):
-        owners = tuple(sorted(users[c]))
-        if len(owners) > 1 and owners not in seen:
-            seen.add(owners)
-            warnings.append(f"Overlap: channel {c} is used by {', '.join(owners)}")
+    for c in sorted(by_channel):
+        keys = by_channel[c]
+        if len(keys) < 2:
+            continue
+        clash = tuple(sorted(keys))
+        if clash in seen:
+            continue
+        seen.add(clash)
+        labels = []
+        for start, size in clash:
+            who = " + ".join(sorted(addrs[(start, size)]["owners"])) or "?"
+            labels.append(f"{who} (ch {start}-{start + size - 1})")
+        warnings.append(f"Overlap at channel {c}: " + ", ".join(labels))
     for mac, b in cfg["bulbs"].items():
         if b["follow"] and cfg["groups"].get(b["follow"], {}).get("channel") is None:
             warnings.append(f"{b['name'] or mac} follows group {b['follow']}, which has no channel, so it gets no DMX")
