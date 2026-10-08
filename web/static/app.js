@@ -207,10 +207,12 @@ function app() {
     cssFromState(st, solid = false) {
       if (!st) return 'background:#222';
       if (st.v === 0) return 'background:#111';
+      // Draw it as light: a dimmed bulb is the same color, less intense, not a darker
+      // shade. Only very low levels fade toward black; the glow carries the brightness.
       const rgb = st.k != null ? kelvinToRgb(st.k) : hsvToRgb(st.h, st.s, 100);
-      const level = solid ? 0.35 + 0.65 * st.v / 100 : 0.3 + 0.7 * st.v / 100;
+      const level = Math.min(1, 0.25 + 1.5 * st.v / 100);
       const [r, g, b] = rgb.map((x) => Math.round(x * level));
-      return `background:rgb(${r},${g},${b}); --glow: rgba(${rgb.join(',')},${(st.v / 100) * 0.6})`;
+      return `background:rgb(${r},${g},${b}); --glow: rgba(${rgb.join(',')},${0.15 + (st.v / 100) * 0.65})`;
     },
     lampStyle(mac, solid = false) { return this.cssFromState(this.liveOf(mac).state, solid); },
 
