@@ -36,10 +36,12 @@ DEFAULTS = {
     "looks": {},
     "input": {"backend": "uart", "port": "/dev/ttyAMA3"},
     "sender": {
-        "budget_pps": 300,           # packets/s for the whole rig (set from the benchmark)
+        "budget_pps": 500,           # packets/s for the whole rig (clean for 50 bulbs at 10 Hz in tests)
         "min_interval_ms": 50,       # per bulb: at most 20 commands/s
         "max_backoff_ms": 1000,      # ceiling when a bulb stops replying
-        "refresh_s": 2.0,            # re-send each bulb's state this often
+        "refresh_s": 2.0,            # re-send unconfirmed commands after this long
+        "backoff_after": 3,          # consecutive lost replies before a bulb is slowed down
+        "idle_check_s": 3.0,         # status-check bulbs not heard from for this long
         "adaptive_transition": False,  # experimental: fade over the send interval
         "fixed_transition_ms": 30,   # fade time per update (the old app's 30 ms)
         "snap_threshold": 0.15,      # changes larger than this fraction snap (0 ms)
@@ -162,6 +164,8 @@ def validate(raw):
     _num(problems, "per-bulb minimum interval", s["min_interval_ms"], 10, 2000)
     _num(problems, "maximum backoff", s["max_backoff_ms"], s["min_interval_ms"] if isinstance(s["min_interval_ms"], (int, float)) else 10, 60000)
     _num(problems, "refresh interval", s["refresh_s"], 0.2, 60)
+    _num(problems, "lost replies before backoff", s["backoff_after"], 1, 50, integer=True)
+    _num(problems, "idle check period", s["idle_check_s"], 0.5, 300)
     _num(problems, "fixed transition", s["fixed_transition_ms"], 0, 10000, integer=True)
     _num(problems, "snap threshold", s["snap_threshold"], 0, 1)
     if not isinstance(s["adaptive_transition"], bool):

@@ -24,7 +24,7 @@ def test_defaults_fill_in():
 
 def test_partial_settings_merge():
     cfg = validate({"sender": {"curve": "square"}})
-    assert cfg["sender"]["curve"] == "square" and cfg["sender"]["budget_pps"] == 300
+    assert cfg["sender"]["curve"] == "square" and cfg["sender"]["budget_pps"] == 500
 
 
 @pytest.mark.parametrize("ch", [0, 511, 512, 2.5, "1", True])

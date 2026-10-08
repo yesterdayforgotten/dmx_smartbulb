@@ -111,8 +111,9 @@ function app() {
       const s = await this.api('GET', '/api/state');
       this.cfg = s.config; this.warnings = s.warnings; this.nextFree = s.next_free_channel;
       this.fwImages = s.firmware_images; this.live = s.live;
+      // The DMX input is set up on the Pi (config file / setup script), not here.
       this.settings = JSON.parse(JSON.stringify({
-        input: s.config.input, sender: s.config.sender, dmx_loss: s.config.dmx_loss, network: s.config.network,
+        sender: s.config.sender, dmx_loss: s.config.dmx_loss, network: s.config.network,
       }));
     },
     connect() {

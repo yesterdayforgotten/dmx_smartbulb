@@ -15,7 +15,7 @@ Each tick (a new DMX frame, or every 10 ms):
    reply within refresh_s (a confirmed bulb is known to be showing it).
 4. Replies (KL bulbs answer every command) mark a bulb online and measure its
    round-trip time. A command with no reply within REPLY_TIMEOUT counts as a
-   miss; BACKOFF_AFTER misses in a row double that bulb's interval (up to
+   miss; backoff_after misses in a row (a setting) double that bulb's interval (up to
    max_backoff_ms), so the odd lost WiFi packet doesn't slow a bulb down.
    Replies ease it back toward min_interval_ms.
 
@@ -40,7 +40,6 @@ from engine import kasa
 from engine.config import bulb_channel
 
 REPLY_TIMEOUT = 0.5      # s: a command not answered within this is a miss
-BACKOFF_AFTER = 3        # consecutive misses before backing off (WiFi drops the odd packet)
 OFFLINE_AFTER = 5.0      # s without any reply while commands are going out
 BURST_S = 0.05           # the budget may be spent this far ahead (token bucket depth)
 AGE_WEIGHT = 10.0        # priority added per second a change has waited (100 ms ~ a full change)
@@ -191,6 +190,7 @@ class Sender:
         self.snap = s["snap_threshold"]
         self.curve = s["curve"]
         self.mode = s["mode"]
+        self.backoff_after = s["backoff_after"]
         old = self.bulbs
         self.bulbs = {}
         for mac, b in cfg["bulbs"].items():
@@ -316,7 +316,7 @@ class Sender:
             sample = t - sent_at
             rt.rtt = sample if rt.rtt is None else rt.rtt * 0.8 + sample * 0.2
             rt.misses += lost
-            if lost >= BACKOFF_AFTER:
+            if lost >= self.backoff_after:
                 self._back_off(rt)
         rt.miss_streak = 0
         # Recovering: ease the interval back toward the configured minimum.
@@ -332,7 +332,7 @@ class Sender:
             rt.pending.popleft()
             rt.misses += 1
             rt.miss_streak += 1
-            if rt.miss_streak >= BACKOFF_AFTER:
+            if rt.miss_streak >= self.backoff_after:
                 self._back_off(rt)
 
     # ---- sending ---------------------------------------------------------

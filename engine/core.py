@@ -16,7 +16,6 @@ LOSS_DETECT_S = 1.0          # no frame for this long means DMX is lost
 TICK_S = 0.01                # tick at least this often without new frames
 REDISCOVER_AFTER_S = 10.0    # a bulb offline this long triggers rediscovery
 REDISCOVER_EVERY_S = 30.0    # at most this often
-POLL_QUIET_S = 3.0           # status-query bulbs not heard from for this long
 
 
 class Engine:
@@ -110,6 +109,14 @@ class Engine:
     # ---- background work ---------------------------------------------------------
 
     async def _housekeeping(self):
+        # Bulbs are identified by MAC; their stored IPs are only the last ones
+        # seen. Check them straight away so a bulb that got a new DHCP lease
+        # while we were off is found at once, not after it times out.
+        try:
+            self._last_discovery = time.monotonic()
+            await self.rediscover()
+        except OSError as e:
+            log.warning("start-up discovery failed: %s", e)
         n = 0
         while True:
             await asyncio.sleep(1.0)
@@ -133,11 +140,12 @@ class Engine:
         """Ask bulbs that haven't been heard from lately for their light state,
         so online/offline is right even when nothing is being sent. The query
         doesn't change the bulb; its reply updates last_reply like any other."""
+        period = self.cfg["sender"]["idle_check_s"]
         for rt in self.sender.bulbs.values():
             if not rt.ip:
                 continue
-            quiet = rt.last_reply is None or now - rt.last_reply > POLL_QUIET_S
-            if quiet and now - rt.last_send > POLL_QUIET_S and now - rt.last_poll > POLL_QUIET_S:
+            quiet = rt.last_reply is None or now - rt.last_reply > period
+            if quiet and now - rt.last_send > period and now - rt.last_poll > period:
                 rt.last_poll = now
                 self.transport.send(rt.ip, kasa.LIGHT_STATE)
 

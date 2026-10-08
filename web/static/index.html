@@ -291,19 +291,14 @@
     <!-- ================= SETUP ================= -->
     <div x-show="tab === 'setup'">
       <form class="stack" @submit.prevent="saveSettings()">
-        <h2>DMX input</h2>
-        <section class="card row">
-          <label class="field"><span>Input</span>
-            <select id="backend" x-model="settings.input.backend"><option value="uart">Direct DMX (Pi UART)</option><option value="esp32">ESP32 serial</option></select></label>
-          <label class="field"><span>Serial port</span><input id="port" type="text" x-model="settings.input.port"></label>
-        </section>
-
         <h2>Sending to bulbs</h2>
         <section class="card row">
           <label class="field"><span>Budget (packets/s, whole rig)</span><input id="budget" type="number" min="1" max="5000" x-model.number="settings.sender.budget_pps"></label>
           <label class="field"><span>Per-bulb minimum interval (ms)</span><input id="mininterval" type="number" min="10" max="2000" x-model.number="settings.sender.min_interval_ms"></label>
           <label class="field"><span>Maximum backoff (ms)</span><input id="maxbackoff" type="number" min="10" max="60000" x-model.number="settings.sender.max_backoff_ms"></label>
-          <label class="field"><span>Refresh every (s)</span><input id="refresh" type="number" min="0.2" max="60" step="0.1" x-model.number="settings.sender.refresh_s"></label>
+          <label class="field"><span>Re-send unconfirmed after (s)</span><input id="refresh" type="number" min="0.2" max="60" step="0.1" x-model.number="settings.sender.refresh_s"></label>
+          <label class="field"><span>Lost replies before slowing a bulb</span><input id="backoffafter" type="number" min="1" max="50" x-model.number="settings.sender.backoff_after"></label>
+          <label class="field"><span>Check idle bulbs every (s)</span><input id="idlecheck" type="number" min="0.5" max="300" step="0.5" x-model.number="settings.sender.idle_check_s"></label>
         </section>
 
         <h2>Smoothness</h2>
