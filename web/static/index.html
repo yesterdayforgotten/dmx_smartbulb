@@ -313,9 +313,11 @@
               <option value="sync">Sync: all bulbs change together</option>
               <option value="priority">Priority: biggest change first</option>
             </select></label>
-          <label class="switch"><input id="adaptive" type="checkbox" x-model="settings.sender.adaptive_transition"> Adaptive transition</label>
-          <label class="field" x-show="!settings.sender.adaptive_transition"><span>Fixed transition (ms)</span><input id="fixedtr" type="number" min="0" max="10000" x-model.number="settings.sender.fixed_transition_ms"></label>
+          <label class="field" :class="settings.sender.adaptive_transition && 'muted'"><span>Fade time per update (ms)</span>
+            <input id="fixedtr" type="number" min="0" max="10000" step="5" x-model.number="settings.sender.fixed_transition_ms" :disabled="settings.sender.adaptive_transition"></label>
+          <label class="switch"><input id="adaptive" type="checkbox" x-model="settings.sender.adaptive_transition"> Smooth fades (experimental)</label>
           <label class="field" x-show="settings.sender.adaptive_transition"><span>Snap above (0–1 change)</span><input id="snap" type="number" min="0" max="1" step="0.05" x-model.number="settings.sender.snap_threshold"></label>
+          <p class="muted" style="margin:0; flex-basis:100%">Each bulb blends to every new colour over the fade time (the old app used 30 ms). Smooth fades instead stretch each blend over the time until the next update; smoother, but the bulb lags a little.</p>
           <label class="field"><span>Brightness curve</span>
             <select id="curve" x-model="settings.sender.curve"><option value="linear">Linear</option><option value="square">Square law</option><option value="scurve">S-curve</option></select></label>
         </section>

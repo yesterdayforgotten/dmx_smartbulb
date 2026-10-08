@@ -8,6 +8,10 @@ LIGHT = "smartlife.iot.smartbulb.lightingservice"
 
 
 def make(bulbs=None, groups=None, **sender):
+    # Most tests here exercise the priority scheduler and adaptive fades; the
+    # sync-mode tests ask for mode="sync" explicitly.
+    sender.setdefault("mode", "priority")
+    sender.setdefault("adaptive_transition", True)
     cfg = validate({
         "bulbs": bulbs or {A: {"name": "a", "ip": "10.0.0.1", "channel": 1},
                            B: {"name": "b", "ip": "10.0.0.2", "channel": 1},   # shares a's channels

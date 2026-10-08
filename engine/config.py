@@ -40,11 +40,11 @@ DEFAULTS = {
         "min_interval_ms": 50,       # per bulb: at most 20 commands/s
         "max_backoff_ms": 1000,      # ceiling when a bulb stops replying
         "refresh_s": 2.0,            # re-send each bulb's state this often
-        "adaptive_transition": True,
-        "fixed_transition_ms": 30,   # used when adaptive_transition is off
+        "adaptive_transition": False,  # experimental: fade over the send interval
+        "fixed_transition_ms": 30,   # fade time per update (the old app's 30 ms)
         "snap_threshold": 0.15,      # changes larger than this fraction snap (0 ms)
         "curve": "linear",
-        "mode": "priority",          # priority: biggest change first; sync: all changes per output frame
+        "mode": "sync",              # sync: every changed bulb per output frame; priority: biggest change first
     },
     "dmx_loss": {"mode": "hold", "after_s": 5.0, "look": None},
     "network": {"ssid": "", "password": ""},
