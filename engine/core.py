@@ -163,7 +163,11 @@ class Engine:
 
     async def rediscover(self):
         """Find bulbs by MAC and update any whose IP changed. Saves the config."""
-        found = await self.discover(self.discovery_targets, port=self.cfg["kasa_port"], timeout=2.0)
+        # Broadcast, plus each known bulb directly at its last IP (some Kasa
+        # firmware has been reported to stop answering broadcast discovery).
+        known = [b["ip"] for b in self.cfg["bulbs"].values() if b["ip"]]
+        targets = list(dict.fromkeys(self.discovery_targets + known))
+        found = await self.discover(targets, port=self.cfg["kasa_port"], timeout=2.0)
         changed = False
         for ip, info in found.items():
             mac = kasa.sysinfo_mac(info)
