@@ -268,3 +268,57 @@ def test_occasional_loss_does_not_back_off():
     assert a.misses == pytest.approx(n / 50, abs=1)  # every lost reply is counted, exactly
     assert not a.backed_off(s.min_interval)
     assert a.rtt == pytest.approx(0.01)               # and RTT isn't skewed by the losses
+
+
+
+def _fade_run(mode, n=30, budget=100, seconds=6):
+    bulbs = {f"50C7BF0000{i:02X}": {"ip": f"10.0.1.{i}", "channel": 1 + 3 * i} for i in range(n)}
+    s, sent = make(bulbs, budget_pps=budget, min_interval_ms=100, mode=mode, refresh_s=60)
+    sends = []
+    replies = []
+    s.send = lambda ip, cmd: sends.append((ip, cmd)) or replies.append((ip, cmd)) or True
+    t = 0.0
+    while t < seconds:
+        for ip, cmd in replies:
+            s.on_reply(ip, echo(cmd), t + 0.005)
+        replies.clear()
+        d = bytearray(512)
+        k = int(t * 31)
+        for i in range(n):
+            d[3 * i:3 * i + 3] = bytes([k & 0xFF, 255, 200])     # every bulb fades the same way
+        s.update_dmx(bytes(d), t, t)
+        s.tick(t)
+        t += 0.01
+    s._housekeep_metrics(t + 10)
+    return s, sends
+
+
+def test_sync_mode_sends_all_changed_bulbs_together():
+    s, sends = _fade_run("sync")
+    from engine.sender import percentile
+    assert s.frame_period == pytest.approx(0.3)                   # 30 bulbs / 100 pkt/s
+    # Each output frame carries all 30 bulbs with one shared transition.
+    first_frame = sends[:30]
+    assert len({ip for ip, _ in first_frame}) == 30
+    later = [state_of(c)["transition_period"] for _, c in sends[30:60]]
+    assert set(later) <= {300, 0}
+    assert len(sends) / 6 <= 100 * 1.05                           # stays within the budget
+    assert percentile(s.delivery_spread, 0.95) < 0.02             # all bulbs get each change together
+
+
+def test_priority_mode_spreads_deliveries():
+    s, _ = _fade_run("priority")
+    from engine.sender import percentile
+    assert percentile(s.delivery_spread, 0.95) > 0.1              # the budget trickles changes out
+
+
+def test_sync_mode_skips_backed_off_bulb():
+    s, sends = _fade_run("sync", n=4, budget=100, seconds=1)
+    a = s.bulbs["50C7BF000000"]
+    a.interval = 2.0
+    a.last_send = 100.0
+    s.frame_next = 0
+    s.update_dmx(bytes([9, 255, 200] * 4) + bytes(500), 100.1, 100.1)
+    before = len(sends)
+    s.tick(100.1)
+    assert "10.0.1.0" not in [ip for ip, _ in sends[before:]]

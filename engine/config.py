@@ -44,6 +44,7 @@ DEFAULTS = {
         "fixed_transition_ms": 30,   # used when adaptive_transition is off
         "snap_threshold": 0.15,      # changes larger than this fraction snap (0 ms)
         "curve": "linear",
+        "mode": "priority",          # priority: biggest change first; sync: all changes per output frame
     },
     "dmx_loss": {"mode": "hold", "after_s": 5.0, "look": None},
     "network": {"ssid": "", "password": ""},
@@ -165,6 +166,8 @@ def validate(raw):
     _num(problems, "snap threshold", s["snap_threshold"], 0, 1)
     if not isinstance(s["adaptive_transition"], bool):
         problems.append("adaptive transition must be true or false")
+    if s["mode"] not in ("priority", "sync"):
+        problems.append("send mode must be 'priority' or 'sync'")
     if s["curve"] not in CURVES:
         problems.append(f"brightness curve must be one of {', '.join(CURVES)}")
 

@@ -103,7 +103,8 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
                 "input": {k: inp.get(k) for k in ("frames", "malformed", "error_bytes", "held", "oe", "fe",
                                                   "restarts", "alive", "slots")},
                 "sender": {k: snd.get(k) for k in ("sent", "refreshes", "budget_waits", "latency_p50_ms",
-                                                   "latency_p95_ms", "queued_p95_ms")},
+                                                   "latency_p95_ms", "queued_p95_ms", "mode", "frame_period_ms",
+                                                   "delivery_spread_p95_ms", "reply_spread_p95_ms")},
                 "online": st["online"], "bulbs": bulbs, "ip_changes": st["ip_changes"][-5:],
                 "firmware": fw_jobs}
 

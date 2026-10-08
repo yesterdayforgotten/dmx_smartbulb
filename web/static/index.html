@@ -46,6 +46,8 @@
         <span class="pill" :class="onlineCount() === bulbList().length ? 'ok' : 'warn'"><span class="dot"></span>
           <span x-text="onlineCount() + '/' + bulbList().length + ' online'"></span></span>
         <span class="pill" x-show="live && live.sender.latency_p95_ms != null" x-text="'p95 ' + (live ? live.sender.latency_p95_ms : '') + ' ms'"></span>
+        <span class="pill" x-show="live && live.sender.delivery_spread_p95_ms != null" title="How far apart bulbs receive the same DMX change (95th percentile)"
+              x-text="'spread ' + (live ? live.sender.delivery_spread_p95_ms : '') + ' ms'"></span>
         <span class="pill bad" x-show="live && (live.input.malformed || live.input.oe || live.input.restarts)"><span class="dot"></span>
           <span x-text="inputProblems()"></span></span>
       </div>
@@ -306,6 +308,11 @@
 
         <h2>Smoothness</h2>
         <section class="card row">
+          <label class="field"><span>Send mode</span>
+            <select id="sendmode" x-model="settings.sender.mode">
+              <option value="sync">Sync: all bulbs change together</option>
+              <option value="priority">Priority: biggest change first</option>
+            </select></label>
           <label class="switch"><input id="adaptive" type="checkbox" x-model="settings.sender.adaptive_transition"> Adaptive transition</label>
           <label class="field" x-show="!settings.sender.adaptive_transition"><span>Fixed transition (ms)</span><input id="fixedtr" type="number" min="0" max="10000" x-model.number="settings.sender.fixed_transition_ms"></label>
           <label class="field" x-show="settings.sender.adaptive_transition"><span>Snap above (0–1 change)</span><input id="snap" type="number" min="0" max="1" step="0.05" x-model.number="settings.sender.snap_threshold"></label>

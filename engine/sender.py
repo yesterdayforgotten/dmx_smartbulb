@@ -18,6 +18,16 @@ Each tick (a new DMX frame, or every 10 ms):
    max_backoff_ms), so the odd lost WiFi packet doesn't slow a bulb down.
    Replies ease it back toward min_interval_ms.
 
+Send modes (sender.mode):
+    priority  the token bucket above: largest change first, as budget allows.
+    sync      fixed output frames of period P = max(min interval, active bulbs /
+              budget). Each frame sends to every changed bulb at once with the
+              same transition (P), so bulbs move together instead of trickling.
+
+Sync is measured two ways: delivery spread (for a DMX frame that changes 2+
+bulbs, first to last bulb sent that change) and reply spread (first to last
+reply within one burst of commands: network and bulb timing).
+
 This module does no I/O itself: send(ip, command) is injected and time is passed
 in, so the logic can be tested exactly.
 """
@@ -115,6 +125,7 @@ class BulbRuntime:
         self.rtt = None              # smoothed round-trip time, s
         self.hold_until = 0.0        # ignore DMX until then (identify)
         self.last_poll = -math.inf   # last status query (engine polls quiet bulbs)
+        self.target_frame = None     # DMX frame time behind the current target
 
     @property
     def dirty(self):
@@ -139,6 +150,13 @@ class Sender:
         self.stats = {"sent": 0, "refreshes": 0, "budget_waits": 0}
         self.latency = collections.deque(maxlen=500)   # DMX frame -> packet sent, s
         self.queued = collections.deque(maxlen=500)    # change -> packet sent, s
+        self.delivery_spread = collections.deque(maxlen=500)  # per DMX frame: first -> last bulb sent, s
+        self.reply_spread = collections.deque(maxlen=500)     # per burst: first -> last reply, s
+        self._frames = collections.deque()   # DMX frames that changed 2+ bulbs, awaiting delivery
+        self._bursts = {}                    # burst id -> [sent time, [reply times]]
+        self.burst_id = 0
+        self.frame_next = 0.0
+        self.frame_period = None
         self.apply_config(cfg)
 
     # ---- configuration -------------------------------------------------
@@ -154,6 +172,7 @@ class Sender:
         self.fixed_ms = s["fixed_transition_ms"]
         self.snap = s["snap_threshold"]
         self.curve = s["curve"]
+        self.mode = s["mode"]
         old = self.bulbs
         self.bulbs = {}
         for mac, b in cfg["bulbs"].items():
@@ -186,6 +205,7 @@ class Sender:
 
     def update_dmx(self, data, frame_time, now):
         """Apply a DMX frame (512 bytes)."""
+        changed = []
         for rt in self.bulbs.values():
             if not rt.dmx or rt.channel is None:
                 continue
@@ -197,7 +217,13 @@ class Sender:
             if rt.source in ("manual", "look"):
                 if raw == rt.manual_raw:
                     continue        # DMX hasn't moved since the manual set; keep it
-            self._set_target(rt, dmx_to_state(raw, self.curve), now, "dmx", frame_time)
+            state = dmx_to_state(raw, self.curve)
+            if state != rt.target:
+                rt.target_frame = frame_time
+                changed.append(rt.mac)
+            self._set_target(rt, state, now, "dmx", frame_time)
+        if len(changed) >= 2:
+            self._frames.append({"t": frame_time, "pending": set(changed), "first": None, "last": None})
 
     def set_manual(self, mac, state, now, source="manual"):
         """state: ("hsv", h, s, v) or ("temp", kelvin, v). Holds until DMX changes."""
@@ -251,14 +277,16 @@ class Sender:
         rt.replies += 1
         # Match the reply to the command it answers. Commands sent before it
         # whose replies never came were lost.
-        idx = next((i for i, (_, k) in enumerate(rt.pending) if k == key), None)
+        idx = next((i for i, (_, k, _b) in enumerate(rt.pending) if k == key), None)
         if idx is None:
             idx = 0 if rt.pending else None     # unrecognised echo: assume the oldest
         if idx is not None:
             lost = idx
             for _ in range(idx):
                 rt.pending.popleft()
-            sent_at, _ = rt.pending.popleft()
+            sent_at, _, burst = rt.pending.popleft()
+            if burst in self._bursts:
+                self._bursts[burst][1].append(t)
             sample = t - sent_at
             rt.rtt = sample if rt.rtt is None else rt.rtt * 0.8 + sample * 0.2
             rt.misses += lost
@@ -290,9 +318,14 @@ class Sender:
             return 0
         return int(rt.interval * 1000)
 
-    def _send(self, rt, now, refresh=False):
+    def _send(self, rt, now, refresh=False, transition_ms=None):
         size = change_size(rt.sent, rt.target)
-        trans = 0 if refresh and rt.target == rt.sent else self._transition_ms(rt, size)
+        if refresh and rt.target == rt.sent:
+            trans = 0
+        elif transition_ms is not None:
+            trans = transition_ms if not self.adaptive or size < self.snap else 0
+        else:
+            trans = self._transition_ms(rt, size)
         if not self.send(rt.ip, command_for(rt.target, trans)):
             return False
         if not refresh or rt.target != rt.sent:
@@ -301,11 +334,17 @@ class Sender:
                 rt.dmx_time = None
             if rt.dirty_since is not None:
                 self.queued.append(now - rt.dirty_since)
+        if rt.target != rt.sent and rt.target_frame is not None:
+            for fr in self._frames:
+                if fr["t"] <= rt.target_frame and rt.mac in fr["pending"]:
+                    fr["pending"].discard(rt.mac)
+                    fr["first"] = now if fr["first"] is None else fr["first"]
+                    fr["last"] = now
         rt.sent = rt.target
         rt.dirty_since = None
         rt.last_send = now
         rt.sends += 1
-        rt.pending.append((now, state_key(rt.target)))
+        rt.pending.append((now, state_key(rt.target), self.burst_id))
         if len(rt.pending) > 20:
             rt.pending.popleft()
         self.stats["sent"] += 1
@@ -313,8 +352,53 @@ class Sender:
             self.stats["refreshes"] += 1
         return True
 
+    def _housekeep_metrics(self, now):
+        while self._frames and (not self._frames[0]["pending"] or now - self._frames[0]["t"] > 3.0):
+            fr = self._frames.popleft()
+            if not fr["pending"] and fr["first"] is not None:
+                self.delivery_spread.append(fr["last"] - fr["first"])
+        for b in [b for b, (t0, _) in self._bursts.items() if now - t0 > 1.0]:
+            _, replies = self._bursts.pop(b)
+            if len(replies) >= 2:
+                self.reply_spread.append(max(replies) - min(replies))
+
     def tick(self, now):
         """Send what the budget allows. Returns the number of packets sent."""
+        self._housekeep_metrics(now)
+        self.burst_id += 1
+        self._bursts[self.burst_id] = [now, []]
+        if self.mode == "sync":
+            return self._tick_sync(now)
+        return self._tick_priority(now)
+
+    def _tick_sync(self, now):
+        """Output frames: every changed bulb in the same burst, same transition."""
+        for rt in self.bulbs.values():
+            self._expire(rt, now)
+        if now < self.frame_next:
+            return 0
+        active = [rt for rt in self.bulbs.values() if rt.ip and rt.target is not None]
+        period = max(self.min_interval, len(active) / self.budget if active else self.min_interval)
+        self.frame_period = period
+        # Keep a steady cadence; if we fell behind (e.g. a stall), restart from now.
+        self.frame_next = self.frame_next + period if now - self.frame_next < period else now + period
+        trans = int(period * 1000) if self.adaptive else self.fixed_ms
+        sent = 0
+        for rt in active:
+            # A backed-off bulb sits out frames until its own interval has passed.
+            if rt.dirty and now - rt.last_send >= rt.interval - 1e-6:
+                if self._send(rt, now, transition_ms=trans):
+                    sent += 1
+        room = int(self.budget * period) - sent
+        if room > 0:
+            stale = [rt for rt in active if not rt.dirty and now - rt.last_send >= max(self.refresh_s, rt.interval)]
+            stale.sort(key=lambda rt: rt.last_send)
+            for rt in stale[:room]:
+                if self._send(rt, now, refresh=True):
+                    sent += 1
+        return sent
+
+    def _tick_priority(self, now):
         if self.last_tick is not None:
             self.tokens = min(self.tokens + (now - self.last_tick) * self.budget,
                               max(1.0, self.budget * BURST_S))

@@ -38,7 +38,15 @@ static void connect_wifi() {
                   WiFi.channel());
     udp.begin(PORT);
   } else {
-    Serial.println("couldn't join the WiFi; retrying");
+    // wl_status_t: 1 no SSID found, 4 connect failed (often a wrong password), 6 disconnected.
+    Serial.printf("couldn't join the WiFi (status %d); networks visible on 2.4 GHz:\n", WiFi.status());
+    int n = WiFi.scanNetworks();
+    for (int i = 0; i < n; i++) {
+      Serial.printf("  %-32s ch %2d  rssi %4d  auth %d%s\n", WiFi.SSID(i).c_str(), WiFi.channel(i), WiFi.RSSI(i),
+                    WiFi.encryptionType(i), WiFi.SSID(i) == WIFI_SSID ? "  <- ours" : "");
+    }
+    WiFi.scanDelete();
+    Serial.println("retrying");
   }
 }
 
