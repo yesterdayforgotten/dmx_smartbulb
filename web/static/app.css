@@ -230,3 +230,4 @@ input[type=number].ch { width: 5em; }
 .fixture-tile[aria-pressed="true"] { border-color: var(--accent); background: var(--panel-2); }
 .fixture-tile[aria-pressed="false"] { opacity: .6; }
 .fixture-tile .fixture-name { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selection-bar { margin-top: 6px; padding: 6px 10px; background: var(--panel-2); border: 1px solid var(--accent); border-radius: 8px; align-items: center; }

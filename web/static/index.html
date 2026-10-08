@@ -202,10 +202,13 @@
           <option value="manual">Manual / look</option>
         </select>
         <button class="btn small primary" type="button" @click="discover()" :disabled="discovering" x-text="discovering ? 'Searching…' : 'Find bulbs'"></button>
-        <button class="btn small" type="button" x-show="selected.length" @click="bulkGroups = true"
-                x-text="`Groups for ${selected.length} selected…`"></button>
-        <button class="btn small" type="button" x-show="selected.length" @click="openAssign()"
-                x-text="`Assign channels to ${selected.length} bulb${selected.length === 1 ? '' : 's'}…`"></button>
+      </div>
+      <div class="toolbar selection-bar" x-show="selected.length" x-cloak>
+        <strong x-text="`${selected.length} selected`"></strong>
+        <button class="btn small" type="button" @click="bulkGroups = true">Groups…</button>
+        <button class="btn small" type="button" @click="openAssign()">Assign channels…</button>
+        <span style="flex:1"></span>
+        <button class="btn small" type="button" @click="selected = []">Clear selection</button>
       </div>
 
       <template x-if="found">
