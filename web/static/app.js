@@ -691,6 +691,8 @@ function app() {
     },
     boardSwatch(f) {
       const h = Math.round(f.h / 255 * 360), sat = Math.round(f.s / 255 * 100), v = Math.round(f.v / 255 * 100);
+      // HSIC at saturation 0 is white at the C channel's temperature (2500-6500 K), as the engine does it.
+      if (f.size === 4 && f.c != null && sat === 0) return this.cssFromState({ k: 2500 + (f.c / 255) * 4000, v }, true);
       return this.cssFromState({ h, s: sat, v }, true);
     },
     satTrack(h) {
