@@ -63,9 +63,12 @@ function app() {
       this.$watch('selected', () => this.syncPowerOn());
       // Firmware, signal and power-on defaults change slowly; refresh them now
       // and then while the Bulbs tab is open (not on Setup, so edits survive).
+      // Skip while a field has focus: reloading would overwrite what's typed.
       if (!this._infoTimer) {
         this._infoTimer = setInterval(() => {
-          if (this.session.authenticated && this.tab === 'bulbs' && !this.menuFor && !this.groupPopup) this.loadState();
+          const el = document.activeElement;
+          const typing = el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+          if (this.session.authenticated && this.tab === 'bulbs' && !this.menuFor && !this.groupPopup && !typing) this.loadState();
         }, 30000);
       }
     },

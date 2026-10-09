@@ -194,7 +194,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         return {"found": await engine.find_bulbs()}
 
     @app.post("/api/bulbs")
-    def add_bulb(request: Request, body: dict = Body(...)):
+    async def add_bulb(request: Request, body: dict = Body(...)):
         need_auth(request)
         mac = (body.get("mac") or "").upper()
         if mac in engine.cfg["bulbs"]:
@@ -204,6 +204,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
             channel = next_free_channel(engine.cfg)
         change(lambda c: c["bulbs"].__setitem__(mac, {"name": body.get("name") or mac, "ip": body.get("ip"),
                                                       "channel": channel}))
+        await engine.read_power_on([mac])      # so the Bulbs tab can show it straight away
         return {"ok": True, "mac": mac}
 
     @app.patch("/api/bulbs/{mac}")
@@ -371,13 +372,14 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
                         headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     @app.post("/api/restore")
-    def restore(request: Request, body: dict = Body(...)):
+    async def restore(request: Request, body: dict = Body(...)):
         need_auth(request)
         cfg = body.get("config", body)          # accept a backup or a saved-file envelope
         keep_auth = engine.cfg["auth"]
         if not cfg.get("auth", {}).get("password_hash"):
             cfg["auth"] = keep_auth             # a backup without a password keeps the current one
         change(lambda c: (c.clear(), c.update(cfg)))
+        engine.refresh_soon()                  # find the restored bulbs and read their power-on defaults
         return {"ok": True, "bulbs": len(engine.cfg["bulbs"])}
 
     # ---- control board (DMX out through an Enttec) ---------------------------------

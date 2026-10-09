@@ -248,6 +248,17 @@ class Engine:
                     return got
         return None
 
+    def refresh_soon(self):
+        """Rediscover the bulbs and read their power-on defaults in the background,
+        e.g. after a restore brought in bulbs the engine hasn't talked to yet."""
+        async def run():
+            try:
+                await self.rediscover()
+                await self.read_power_on()
+            except OSError as e:
+                log.warning("refresh failed: %s", e)
+        self._refresh_task = asyncio.get_running_loop().create_task(run())
+
     async def read_power_on(self, macs=None):
         """Read each bulb's power-on default (get_default_behavior) into self.info."""
         async def one(mac, ip):
