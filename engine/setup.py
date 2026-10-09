@@ -379,8 +379,8 @@ def main(argv=None):
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true", help="report what would change and the system's health; change nothing")
     ap.add_argument("--yes", "-y", action="store_true", help="don't ask before applying")
-    ap.add_argument("--wifi", choices=("on", "off"), help="WiFi radio (default: keep the current setting; "
-                    "on is only needed for pairing bulbs)")
+    ap.add_argument("--wifi", choices=("on", "off"), default="off",
+                    help="WiFi radio (default: off; on is only needed for pairing bulbs)")
     ap.add_argument("--hostname", help="set the hostname (reachable as <name>.local)")
     ap.add_argument("--import-config", metavar="PATH", help="start from this config.json (only if none exists yet)")
     ap.add_argument("--remove-old", action="store_true", help="remove the old Django/runit/nginx install")
@@ -396,8 +396,7 @@ def main(argv=None):
             print(f"  ✗ {p}")
         return 1
 
-    wifi = args.wifi == "on" if args.wifi else "dtoverlay=disable-wifi" not in CONFIG_TXT.read_text()
-    steps = [step_config_txt(wifi), step_services(), step_user(), step_data(args.import_config),
+    steps = [step_config_txt(args.wifi == "on"), step_services(), step_user(), step_data(args.import_config),
              step_quiet_root(), step_service()]
     if args.remove_old:
         steps.append(step_legacy())

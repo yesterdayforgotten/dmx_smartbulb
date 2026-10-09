@@ -202,8 +202,9 @@ Pi 4 ──Ethernet──▶ WiFi router LAN port
 ```
 
 The Pi is wired into a LAN port on the WiFi router, and the bulbs join that router's
-WiFi network. The Pi's own WiFi radio is off unless setup is run with `--wifi on`
-(only needed for pairing bulbs, which is [planned](#future-enhancements)). The router
+WiFi network. Setup turns the Pi's own WiFi radio off unless it's run with `--wifi on`
+(only needed for pairing bulbs, which is [planned](#future-enhancements)). Re-running
+setup without `--wifi on` turns it off again. The router
 has to bridge its LAN ports and WiFi into one subnet (the default on home routers),
 because:
 
@@ -232,9 +233,18 @@ been offline for 10 s or more. Reservations avoid that during a show.
    ```bash
    sudo apt update && sudo apt install -y git
    sudo git clone https://github.com/yesterdayforgotten/dmx_smartbulb.git /dmx_smartbulb
+   sudo chown -R "$USER": /dmx_smartbulb
    cd /dmx_smartbulb
    sudo ./setup.sh
    ```
+
+   The `chown` lets you `git pull` later without `sudo`. The service only reads these
+   files.
+
+   Moving from another Pi or SD card? On the old one, download a backup from
+   **Setup → Backup**, copy it over (e.g. with `scp`), and add
+   `--import-config ~/backup.json`. The backup brings the bulbs, groups, settings and
+   password. You can also restore it later from the web UI.
 
    `setup.sh` installs `python3-venv` and `avahi-daemon`, creates `.venv`, installs
    [requirements.txt](requirements.txt), and then hands over to `python -m engine setup`
@@ -252,6 +262,11 @@ been offline for 10 s or more. Reservations avoid that during a show.
    `/dev/ttyAMA3` exists, the service is active, the web UI answers, DMX is arriving,
    bulbs are online, and the SD card had no writes for 60 s.
 
+   Two ✗ results are normal on a fresh install: **DMX arriving** fails until a console
+   or the Enttec is sending, and **SD card quiet** fails while you're logged in over
+   SSH (the shell, git and editors write to the card). The engine itself writes nothing
+   while idle.
+
 5. **Open the web UI** at `http://<hostname>.local/` (or the Pi's IP). On the first
    visit it asks you to choose the password venue staff will use. Then go to the
    **Bulbs** tab and press **Find bulbs**.
@@ -265,7 +280,7 @@ can find them.
 |--------|--------|
 | `--check` | Report what would change, plus the health check; change nothing |
 | `--yes`, `-y` | Don't ask before applying |
-| `--wifi on\|off` | The Pi's WiFi radio (default: keep the current setting) |
+| `--wifi on\|off` | The Pi's WiFi radio (default: off) |
 | `--hostname NAME` | Rename the Pi (reachable as `NAME.local`) |
 | `--import-config PATH` | Start from this config: a backup downloaded from the Setup tab, or a saved `config.json`. Only used if no config exists yet |
 | `--remove-old` | Remove the old Django install: runit service, nginx site (and disable nginx), `/var/log/gunicorn` |
