@@ -5,7 +5,7 @@ step looks at the current state before acting, so it is safe to re-run. Without
 --yes it prints the plan and asks before changing anything; --check only reports.
 
 Steps:
-  preflight       Pi 4, Raspberry Pi OS bookworm 64-bit, root
+  preflight       Pi 4, Raspberry Pi OS bookworm or trixie 64-bit, root
   config.txt      UART3 on GPIO4/5 (pin 29), Bluetooth off, WiFi radio on/off
   services        ModemManager (probes serial ports), bluetooth, hciuart, triggerhappy off
   user            the `dmxbulb` service user, in the dialout group
@@ -41,6 +41,7 @@ UNIT = Path("/etc/systemd/system/dmx_smartbulb.service")
 JOURNALD = Path("/etc/systemd/journald.conf.d/dmx_smartbulb.conf")
 TMP_MOUNT = Path("/etc/systemd/system/tmp.mount")
 BEGIN, END = "# BEGIN dmx_smartbulb", "# END dmx_smartbulb"
+SUPPORTED_OS = ("bookworm", "trixie")
 QUIET_SERVICES = ("ModemManager", "bluetooth", "hciuart", "triggerhappy")
 # Things earlier versions of this project installed; removed with --remove-old.
 LEGACY_RUNIT = (Path("/etc/service/dmx_smartbulb"), Path("/etc/sv/dmx_smartbulb"))
@@ -76,8 +77,8 @@ def preflight():
         problems.append(f"this is a {model!r}; only the Pi 4 is supported "
                         "(UART3 on GPIO4/5 doesn't exist on a Pi 3, and a Pi 5's UARTs differ)")
     osr = dict(re.findall(r'^(\w+)="?([^"\n]*)"?', Path("/etc/os-release").read_text(), re.M))
-    if osr.get("VERSION_CODENAME") != "bookworm":
-        problems.append(f"OS is {osr.get('PRETTY_NAME')}; Raspberry Pi OS bookworm is expected")
+    if osr.get("VERSION_CODENAME") not in SUPPORTED_OS:
+        problems.append(f"OS is {osr.get('PRETTY_NAME')}; Raspberry Pi OS {' or '.join(SUPPORTED_OS)} is expected")
     if os.uname().machine != "aarch64":
         problems.append(f"64-bit OS expected, this is {os.uname().machine}")
     if os.geteuid() != 0:
@@ -178,11 +179,11 @@ def step_data(import_config):
     def apply():
         (DATA / "firmware").mkdir(parents=True, exist_ok=True)
         if import_config and not cfg.exists():
-            src = Path(import_config)
-            for suffix in ("", ".bak"):           # both checksummed copies, if present
-                s = src.with_name(src.name + suffix)
-                if s.exists():
-                    shutil.copy2(s, cfg.with_name(cfg.name + suffix))
+            # Either a saved config (the engine's checksummed file) or a backup
+            # downloaded from the Setup tab (the bare config).
+            from engine.config import ConfigStore, validate
+            raw = json.loads(Path(import_config).read_text())
+            ConfigStore(cfg).save(validate(raw["config"] if "sha256" in raw and "config" in raw else raw))
         sh("chown", "-R", f"{USER}:{USER}", str(DATA))
         os.chmod(DATA, 0o750)
     return Step("data", [t for t in todo if not t.startswith("(")] and todo, apply)
@@ -198,13 +199,21 @@ def _owner(path):
 # ---- quiet root --------------------------------------------------------------------
 
 
+def swap_files():
+    """Active swap files (not zram devices)."""
+    out = sh("swapon", "--show=NAME,TYPE", "--noheadings", check=False).stdout
+    return [ln.split()[0] for ln in out.splitlines() if ln.split()[1:2] == ["file"]]
+
+
 def step_quiet_root():
     todo = []
     src = REPO / "deploy" / "journald.conf"
     if not JOURNALD.exists() or JOURNALD.read_text() != src.read_text():
         todo.append("keep logs in RAM (journald Storage=volatile, 16 MB)")
-    if ok(["systemctl", "is-enabled", "--quiet", "dphys-swapfile"]) or Path("/var/swap").exists():
-        todo.append("turn off the SD-card swap file (zram swap stays)")
+    files = swap_files()
+    if ok(["systemctl", "is-enabled", "--quiet", "dphys-swapfile"]) or files:
+        todo.append(f"turn off the SD-card swap file{'s' if len(files) > 1 else ''} "
+                    f"{' '.join(files)} (zram swap stays)".replace("  ", " "))
     if not ok(["systemctl", "is-enabled", "--quiet", "tmp.mount"]):
         todo.append("mount /tmp in RAM (from the next boot)")
 
@@ -215,9 +224,16 @@ def step_quiet_root():
         if unit_exists("dphys-swapfile"):
             sh("dphys-swapfile", "swapoff", check=False)
             sh("systemctl", "disable", "--now", "dphys-swapfile", check=False)
-        if Path("/var/swap").exists():
-            sh("swapoff", "/var/swap", check=False)
-            Path("/var/swap").unlink()
+        # trixie's rpi-swap: zram only, no file on the SD card.
+        conf = Path("/etc/rpi/swap.conf.d/90-dmx_smartbulb.conf")
+        if Path("/etc/rpi/swap.conf").exists() or Path("/etc/rpi/swap.conf.d").exists():
+            conf.parent.mkdir(parents=True, exist_ok=True)
+            conf.write_text("# Installed by `python -m engine setup`: no swap file on the SD card.\n"
+                            "[Main]\nMechanism=zram\n")
+        for f in swap_files():
+            sh("swapoff", f, check=False)
+            if Path(f).is_file():
+                Path(f).unlink()
         if not TMP_MOUNT.exists() and Path("/usr/share/systemd/tmp.mount").exists():
             shutil.copy2("/usr/share/systemd/tmp.mount", TMP_MOUNT)
         sh("systemctl", "daemon-reload")

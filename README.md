@@ -221,7 +221,7 @@ been offline for 10 s or more. Reservations avoid that during a show.
 ## Installing on a Raspberry Pi
 
 1. **Flash the OS.** Use Raspberry Pi Imager to write **Raspberry Pi OS Lite (64-bit)**,
-   Debian 12 "bookworm", for a **Pi 4**. In the Imager settings, set the hostname,
+   Debian 13 "trixie" (or 12 "bookworm"), for a **Pi 4**. In the Imager settings, set the hostname,
    create a user, and enable SSH.
 
 2. **Network.** Connect Ethernet to a LAN port on the router whose WiFi the bulbs use.
@@ -267,7 +267,7 @@ can find them.
 | `--yes`, `-y` | Don't ask before applying |
 | `--wifi on\|off` | The Pi's WiFi radio (default: keep the current setting) |
 | `--hostname NAME` | Rename the Pi (reachable as `NAME.local`) |
-| `--import-config PATH` | Start from this `config.json` (and its `.bak`), only if no config exists yet |
+| `--import-config PATH` | Start from this config: a backup downloaded from the Setup tab, or a saved `config.json`. Only used if no config exists yet |
 | `--remove-old` | Remove the old Django install: runit service, nginx site (and disable nginx), `/var/log/gunicorn` |
 | `--no-firmware` | Skip downloading bulb firmware |
 | `--write-check S` | Seconds to watch for SD card writes in `--check` (0 to skip) |
