@@ -6,11 +6,13 @@ step looks at the current state before acting, so it is safe to re-run. Without
 
 Steps:
   preflight       Pi 4, Raspberry Pi OS bookworm or trixie 64-bit, root
-  config.txt      UART3 on GPIO4/5 (pin 29), Bluetooth off, WiFi radio on/off
+  config.txt      UART3 on GPIO4/5 (pin 29), Bluetooth off
   services        ModemManager (probes serial ports), bluetooth, hciuart, triggerhappy off
   user            the `dmxbulb` service user, in the dialout group
   data            /var/lib/dmx_smartbulb (config + firmware), optionally importing a config
   quiet root      logs in RAM, no swap file on the SD card (zram stays), /tmp in RAM
+  wifi            radio off (rfkill), NetworkManager off wlan0, and the root helper
+                  the engine uses to switch it on briefly to check the WiFi password
   service         dmx_smartbulb.service, enabled and (re)started
   legacy          (--remove-old) the old runit service, nginx site and gunicorn logs
   firmware        download the bulb firmware images listed in firmware/manifest.json
@@ -40,6 +42,9 @@ CONFIG_TXT = Path("/boot/firmware/config.txt")
 UNIT = Path("/etc/systemd/system/dmx_smartbulb.service")
 JOURNALD = Path("/etc/systemd/journald.conf.d/dmx_smartbulb.conf")
 TMP_MOUNT = Path("/etc/systemd/system/tmp.mount")
+WIFI_SOCKET = Path("/etc/systemd/system/dmx_smartbulb-wifi.socket")
+WIFI_SERVICE = Path("/etc/systemd/system/dmx_smartbulb-wifi@.service")
+NM_CONF = Path("/etc/NetworkManager/conf.d/90-dmx_smartbulb.conf")
 BEGIN, END = "# BEGIN dmx_smartbulb", "# END dmx_smartbulb"
 SUPPORTED_OS = ("bookworm", "trixie")
 QUIET_SERVICES = ("ModemManager", "bluetooth", "hciuart", "triggerhappy")
@@ -89,16 +94,14 @@ def preflight():
 # ---- config.txt ------------------------------------------------------------------
 
 
-def config_txt_lines(wifi):
-    lines = ["enable_uart=1", "dtoverlay=uart3", "dtoverlay=disable-bt"]
-    if not wifi:
-        lines.append("dtoverlay=disable-wifi")
-    return lines
+# No dtoverlay=disable-wifi: the radio is switched off with rfkill instead (see
+# step_wifi), so the engine can switch it on to check a password without a reboot.
+CONFIG_TXT_LINES = ["enable_uart=1", "dtoverlay=uart3", "dtoverlay=disable-bt"]
 
 
-def step_config_txt(wifi):
+def step_config_txt():
     text = CONFIG_TXT.read_text()
-    want = config_txt_lines(wifi)
+    want = CONFIG_TXT_LINES
     body = text
     if BEGIN in text:
         body = text[:text.index(BEGIN)] + text[text.index(END) + len(END):]
@@ -241,11 +244,48 @@ def step_quiet_root():
     return Step("quiet root", todo, apply, reboot=True)
 
 
+# ---- WiFi ------------------------------------------------------------------------------
+
+
+def wifi_blocked():
+    """True if the WiFi radio is switched off (rfkill), False if on, None if there's none."""
+    switches = [p for p in Path("/sys/class/rfkill").glob("rfkill*") if (p / "type").read_text().strip() == "wlan"]
+    if not switches:
+        return None
+    return all((p / "soft").read_text().strip() == "1" for p in switches)
+
+
+def step_wifi():
+    todo = []
+    nm_src = (REPO / "deploy" / "networkmanager.conf").read_text()
+    if NM_CONF.parent.is_dir() and (not NM_CONF.exists() or NM_CONF.read_text() != nm_src):
+        todo.append("keep NetworkManager off wlan0")
+    if (not WIFI_SOCKET.exists() or WIFI_SOCKET.read_text() != (REPO / "deploy" / WIFI_SOCKET.name).read_text()
+            or not WIFI_SERVICE.exists() or WIFI_SERVICE.read_text() != unit_text(WIFI_SERVICE.name + ".in")):
+        todo.append(f"install the WiFi check helper ({WIFI_SOCKET.name}, runs as root)")
+    if not (ok(["systemctl", "is-enabled", "--quiet", WIFI_SOCKET.name])
+            and ok(["systemctl", "is-active", "--quiet", WIFI_SOCKET.name])):
+        todo.append(f"enable and start {WIFI_SOCKET.name}")
+    if wifi_blocked() is False:
+        todo.append("switch the WiFi radio off (it's switched on only to check the WiFi password)")
+
+    def apply():
+        if NM_CONF.parent.is_dir():
+            NM_CONF.write_text(nm_src)
+            sh("systemctl", "reload", "NetworkManager", check=False)
+        WIFI_SOCKET.write_text((REPO / "deploy" / WIFI_SOCKET.name).read_text())
+        WIFI_SERVICE.write_text(unit_text(WIFI_SERVICE.name + ".in"))
+        sh("systemctl", "daemon-reload")
+        sh("systemctl", "enable", "--now", WIFI_SOCKET.name)
+        sh("rfkill", "block", "wifi", check=False)
+    return Step("wifi", todo, apply)
+
+
 # ---- the service ---------------------------------------------------------------------
 
 
-def unit_text():
-    tpl = (REPO / "deploy" / "dmx_smartbulb.service.in").read_text()
+def unit_text(template="dmx_smartbulb.service.in"):
+    tpl = (REPO / "deploy" / template).read_text()
     return tpl.replace("@REPO@", str(REPO)).replace("@VENV@", str(VENV))
 
 
@@ -363,6 +403,9 @@ def health(write_seconds):
         rows.append(("bulbs online", st.get("online", 0) > 0, f"{st.get('online', 0)}/{len(st.get('bulbs', {}))}"))
     except (OSError, ValueError):
         rows.append(("DMX arriving", False, "no status file yet"))
+    blocked = wifi_blocked()
+    rows.append(("WiFi radio off", blocked is not False,
+                 "no radio" if blocked is None else "" if blocked else "re-run setup to switch it off"))
     if write_seconds:
         n = sd_writes(write_seconds)
         rows.append((f"SD card quiet for {write_seconds} s", n == 0,
@@ -379,8 +422,6 @@ def main(argv=None):
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true", help="report what would change and the system's health; change nothing")
     ap.add_argument("--yes", "-y", action="store_true", help="don't ask before applying")
-    ap.add_argument("--wifi", choices=("on", "off"), default="off",
-                    help="WiFi radio (default: off; on is only needed for pairing bulbs)")
     ap.add_argument("--hostname", help="set the hostname (reachable as <name>.local)")
     ap.add_argument("--import-config", metavar="PATH", help="start from this config.json (only if none exists yet)")
     ap.add_argument("--remove-old", action="store_true", help="remove the old Django/runit/nginx install")
@@ -396,8 +437,8 @@ def main(argv=None):
             print(f"  ✗ {p}")
         return 1
 
-    steps = [step_config_txt(args.wifi == "on"), step_services(), step_user(), step_data(args.import_config),
-             step_quiet_root(), step_service()]
+    steps = [step_config_txt(), step_services(), step_user(), step_data(args.import_config),
+             step_quiet_root(), step_wifi(), step_service()]
     if args.remove_old:
         steps.append(step_legacy())
     if not args.no_firmware:

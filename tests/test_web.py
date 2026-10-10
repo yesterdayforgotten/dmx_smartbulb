@@ -295,3 +295,27 @@ def test_page_title_setting(tmp_path):
             assert (await h.client.get("/api/session")).json()["title"] == "Spring Musical"
             assert (await h.client.put("/api/settings", json={"ui": {"title": " "}})).status_code == 400
     run(go())
+
+
+def test_wifi_check_uses_the_saved_password_and_needs_login_after_setup(tmp_path, monkeypatch):
+    from engine import wifi
+    calls = []
+
+    async def fake_check(ssid, password):
+        calls.append((ssid, password))
+        return {"result": "ok", "message": "fine"}
+    monkeypatch.setattr(wifi, "check", fake_check)
+
+    async def go():
+        async with Harness(tmp_path) as h:
+            c = h.client
+            # Before setup the first-run page may check.
+            r = await c.post("/api/wifi/check", json={"ssid": "ShowNet", "password": "hunter22"})
+            assert r.json()["result"] == "ok"
+            await h.login()
+            await c.put("/api/settings", json={"network": {"ssid": "ShowNet", "password": "saved-pw1"}})
+            r = await c.post("/api/wifi/check", json={"ssid": "ShowNet", "password": "********"})
+            assert r.status_code == 200 and calls[-1] == ("ShowNet", "saved-pw1")
+            c.cookies.clear()
+            assert (await c.post("/api/wifi/check", json={"ssid": "x", "password": "y"})).status_code == 401
+    run(go())

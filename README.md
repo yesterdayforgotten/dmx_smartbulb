@@ -202,9 +202,9 @@ Pi 4 ──Ethernet──▶ WiFi router LAN port
 ```
 
 The Pi is wired into a LAN port on the WiFi router, and the bulbs join that router's
-WiFi network. Setup turns the Pi's own WiFi radio off unless it's run with `--wifi on`
-(only needed for pairing bulbs, which is [planned](#future-enhancements)). Re-running
-setup without `--wifi on` turns it off again. The router
+WiFi network. The Pi's own WiFi radio stays off; the engine switches it on for a few
+seconds only to check the show network's password (see [Show network](#show-network-password)),
+and later for pairing bulbs ([planned](#future-enhancements)). The router
 has to bridge its LAN ports and WiFi into one subnet (the default on home routers),
 because:
 
@@ -280,7 +280,6 @@ can find them.
 |--------|--------|
 | `--check` | Report what would change, plus the health check; change nothing |
 | `--yes`, `-y` | Don't ask before applying |
-| `--wifi on\|off` | The Pi's WiFi radio (default: off) |
 | `--hostname NAME` | Rename the Pi (reachable as `NAME.local`) |
 | `--import-config PATH` | Start from this config: a backup downloaded from the Setup tab, or a saved `config.json`. Only used if no config exists yet |
 | `--remove-old` | Remove the old Django install: runit service, nginx site (and disable nginx), `/var/log/gunicorn` |
@@ -291,8 +290,14 @@ can find them.
 
 - **`/boot/firmware/config.txt`**: a marked `# BEGIN dmx_smartbulb` … `# END` block with
   `enable_uart=1`, `dtoverlay=uart3` (UART3 on GPIO4/5, RX on pin 29),
-  `dtoverlay=disable-bt`, and `dtoverlay=disable-wifi` when WiFi is off. The same
-  settings elsewhere in the file are commented out, and a dated backup is kept.
+  `dtoverlay=disable-bt`. The same settings elsewhere in the file are commented out
+  (including `dtoverlay=disable-wifi`), and a dated backup is kept.
+- **WiFi**: the radio is switched off with `rfkill` rather than removed in config.txt, so
+  it can be switched on without a reboot. NetworkManager is told to leave `wlan0` alone
+  ([deploy/networkmanager.conf](deploy/networkmanager.conf)), and a small root helper,
+  [engine/wifi_helper.py](engine/wifi_helper.py), is installed behind
+  `dmx_smartbulb-wifi.socket`. The engine runs unprivileged and asks it to check a
+  password; see [below](#show-network-password).
 - **Services**: ModemManager (it probes serial ports), bluetooth, hciuart and
   triggerhappy are stopped and disabled.
 - **User**: a `dmxbulb` system user (no login, in the `dialout` group) runs the service.
@@ -306,6 +311,17 @@ can find them.
   ([deploy/pin-uart-irq.sh](deploy/pin-uart-irq.sh)).
 - **Firmware**: downloads the bulb firmware images listed in
   [firmware/manifest.json](firmware/manifest.json) (needs internet).
+
+### Show network password
+
+The first-run page and **Setup → Show network** keep the name and password of the
+WiFi network the bulbs use (needed later for pairing). When you save a new name or
+password, the Pi checks it: it switches its radio on, looks for the network, and tries
+the WPA handshake, which only succeeds with the right password. It doesn't get an address
+or join the network, and the radio is switched off again afterwards (10–20 s in all).
+If the network isn't found or the password is rejected, it asks whether to save it anyway.
+Only WPA2 (and WPA2/WPA3 mixed) networks can be checked; the result is logged with
+`journalctl -u 'dmx_smartbulb-wifi@*'`.
 
 ### Configuration file
 

@@ -16,7 +16,7 @@ from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketD
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from engine import auth, firmware
+from engine import auth, firmware, wifi
 from engine.config import FOOTPRINT, ConfigError, next_free_channel, overlapping_bulbs, patch_conflicts
 
 STATIC = Path(__file__).resolve().parent.parent / "web" / "static"
@@ -135,6 +135,19 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         except ValueError as e:
             raise HTTPException(400, str(e))
         return login_response({"ok": True})
+
+    @app.post("/api/wifi/check")
+    async def wifi_check(request: Request, body: dict = Body(...)):
+        """Check the show network's name and password with the Pi's radio. Open
+        before the first-run setup (the setup page checks too), then logged in only.
+        A password of ******** means the saved one."""
+        if engine.cfg["auth"]["password_hash"]:
+            need_auth(request)
+        ssid = body.get("ssid") or ""
+        password = body.get("password") or ""
+        if password == "********":
+            password = engine.cfg["network"]["password"]
+        return await wifi.check(ssid, password)
 
     @app.post("/api/login")
     async def login(body: dict = Body(...)):

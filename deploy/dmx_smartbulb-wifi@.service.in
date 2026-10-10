@@ -1,0 +1,12 @@
+# Installed by `python -m engine setup`; @REPO@ is filled in. One instance per
+# connection to dmx_smartbulb-wifi.socket. Root, because it switches the radio on
+# and off (rfkill) and runs wpa_supplicant; standard library only (system python3).
+[Unit]
+Description=DMX Smart Bulbs WiFi check
+
+[Service]
+ExecStart=/usr/bin/python3 -I @REPO@/engine/wifi_helper.py
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+RuntimeMaxSec=90

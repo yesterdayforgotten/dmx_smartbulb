@@ -1,0 +1,15 @@
+# Installed by `python -m engine setup`. The engine (user dmxbulb) asks the root
+# helper engine/wifi_helper.py to check a WiFi password through this socket.
+[Unit]
+Description=DMX Smart Bulbs WiFi check (socket)
+
+[Socket]
+ListenStream=/run/dmx_smartbulb-wifi.sock
+SocketUser=root
+SocketGroup=dmxbulb
+SocketMode=0660
+Accept=yes
+MaxConnections=2
+
+[Install]
+WantedBy=sockets.target

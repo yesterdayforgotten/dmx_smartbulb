@@ -23,13 +23,14 @@
         <div class="stack">
           <label class="field"><span>Repeat password</span>
             <input id="pw2" type="password" x-model="pw2" autocomplete="new-password" required></label>
-          <p class="muted" style="margin:0">Show network (used later for pairing bulbs; optional)</p>
+          <p class="muted" style="margin:0">Show network (used later for pairing bulbs; optional). The Pi checks the password with its WiFi radio.</p>
           <label class="field"><span>Network name (SSID)</span><input id="ssid" type="text" x-model="ssid"></label>
           <label class="field"><span>Network password</span><input id="wifipw" type="password" x-model="wifiPw"></label>
         </div>
       </template>
       <p class="error-text" x-show="loginError" x-text="loginError"></p>
-      <button class="btn primary" type="submit" x-text="session.setup_needed ? 'Save and continue' : 'Log in'"></button>
+      <button class="btn primary" type="submit" :disabled="wifiChecking"
+              x-text="wifiChecking ? 'Checking the WiFi password…' : session.setup_needed ? 'Save and continue' : 'Log in'"></button>
     </form>
   </div>
 </template>
@@ -510,7 +511,8 @@
           <label class="field"><span>Password</span><input id="netpw" type="password" x-model="settings.network.password"></label>
         </section>
 
-        <div class="row"><button class="btn primary" type="submit">Save settings</button></div>
+        <div class="row"><button class="btn primary" type="submit" :disabled="wifiChecking"
+                                 x-text="wifiChecking ? 'Checking the WiFi password…' : 'Save settings'"></button></div>
       </form>
 
       <h2>Backup</h2>
@@ -578,20 +580,6 @@
     </div>
   </template>
 
-  <!-- ================= confirmation ================= -->
-  <template x-if="confirmDlg">
-    <div class="backdrop confirm-backdrop" @click.self="closeConfirm(false)">
-      <div class="sheet stack confirm" role="alertdialog" aria-modal="true" :aria-label="confirmDlg.title">
-        <strong x-text="confirmDlg.title"></strong>
-        <p class="muted" style="margin:0" x-show="confirmDlg.body" x-text="confirmDlg.body"></p>
-        <div class="row" style="justify-content:flex-end">
-          <button class="btn" type="button" @click="closeConfirm(false)">Cancel</button>
-          <button class="btn" :class="confirmDlg.danger ? 'danger-btn' : 'primary'" type="button" x-init="$nextTick(() => $el.focus())"
-                  @click="closeConfirm(true)" x-text="confirmDlg.ok"></button>
-        </div>
-      </div>
-    </div>
-  </template>
 
   <!-- ================= assign channels ================= -->
   <template x-if="assign">
@@ -714,6 +702,21 @@
     </div>
   </template>
 </div>
+</template>
+
+<!-- ================= confirmation (outside the app: the first-run page uses it too) ================= -->
+<template x-if="confirmDlg">
+  <div class="backdrop confirm-backdrop" @click.self="closeConfirm(false)">
+    <div class="sheet stack confirm" role="alertdialog" aria-modal="true" :aria-label="confirmDlg.title">
+      <strong x-text="confirmDlg.title"></strong>
+      <p class="muted" style="margin:0" x-show="confirmDlg.body" x-text="confirmDlg.body"></p>
+      <div class="row" style="justify-content:flex-end">
+        <button class="btn" type="button" @click="closeConfirm(false)">Cancel</button>
+        <button class="btn" :class="confirmDlg.danger ? 'danger-btn' : 'primary'" type="button" x-init="$nextTick(() => $el.focus())"
+                @click="closeConfirm(true)" x-text="confirmDlg.ok"></button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <div class="toast" :class="toast && toast.error && 'error'" x-show="toast" x-cloak x-text="toast && toast.text" role="status"></div>

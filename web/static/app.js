@@ -21,7 +21,7 @@ function app() {
   return {
     loaded: false,
     session: { setup_needed: false, authenticated: false },
-    pw: '', pw2: '', ssid: '', wifiPw: '', loginError: '',
+    pw: '', pw2: '', ssid: '', wifiPw: '', loginError: '', wifiChecking: false,
     tabs: [{ id: 'live', label: 'Live' }, { id: 'bulbs', label: 'Bulbs' }, { id: 'board', label: 'Control Board' }, { id: 'setup', label: 'Setup' }],
     tab: 'live',
     cfg: null, warnings: [], overlaps: [], nextFree: null, fwImages: [], settings: null,
@@ -75,6 +75,7 @@ function app() {
     async doSetup() {
       this.loginError = '';
       if (this.pw !== this.pw2) { this.loginError = "The passwords don't match."; return; }
+      if (this.ssid && !(await this.checkWifi(this.ssid, this.wifiPw))) return;
       try {
         await this.api('POST', '/api/setup', { password: this.pw, ssid: this.ssid, wifi_password: this.wifiPw });
         this.pw = this.pw2 = this.wifiPw = '';
@@ -758,7 +759,25 @@ function app() {
     async boardRelease() { await this.act(this.api('POST', '/api/board/release'), 'Released: no longer sending DMX'); await this.loadBoard(); },
 
     // ---------- setup ----------
+    async checkWifi(ssid, password) {
+      // Try the network name and password with the Pi's radio. A failed check
+      // doesn't block saving: it asks whether to keep them anyway.
+      this.wifiChecking = true;
+      let r;
+      try { r = await this.api('POST', '/api/wifi/check', { ssid, password }); }
+      catch (e) { r = { result: 'error', message: e.message }; }
+      finally { this.wifiChecking = false; }
+      if (r.result === 'ok') { this.say(r.message); return true; }
+      if (r.result === 'unavailable') { this.say(r.message, true); return true; }
+      const titles = { wrong_password: 'Wrong WiFi password?', not_found: 'WiFi network not found',
+        open: 'This network has no password', invalid: "That isn't a valid WiFi password" };
+      return this.askConfirm({ title: titles[r.result] || "Couldn't check the WiFi password",
+        body: `${r.message} Save it anyway?`, ok: 'Save anyway' });
+    },
     async saveSettings() {
+      const net = this.settings.network, old = this.cfg.network;
+      if (net.ssid && (net.ssid !== old.ssid || net.password !== old.password)
+          && !(await this.checkWifi(net.ssid, net.password))) return;
       const r = await this.act(this.api('PUT', '/api/settings', this.settings), 'Settings saved');
       if (r && r.input_restarted) this.say('Settings saved; DMX input restarted');
       await this.loadState();
