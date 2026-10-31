@@ -14,10 +14,20 @@ The radio is normally switched off (rfkill); each request switches it on and bac
                                  unavailable, error
   {"op": "scan_setup"}           list bulbs in setup mode (their open setup networks).
                                  ok + "networks", unavailable, error
+  {"op": "venue_status"}         is wlan0 on a network? connected, ssid, ip, internet,
+                                 temporary, saved (WiFi profiles NetworkManager keeps)
+  {"op": "venue_networks"}       names of nearby networks
+  {"op": "venue_join", "ssid",   put the Pi on the venue's WiFi for internet, Ethernet
+   "password"}                   to the bulbs untouched. Everything is kept in /run, so
+                                 a reboot undoes it: see venue_join().
+  {"op": "venue_leave"}          drop it and switch the radio off
+  {"op": "boot_reset"}           at engine start: radio off unless WiFi is in use
   {"op": "pair", "setup_ssid",   join a bulb's setup network and send it the show
    "ssid", "password", "alias"}  network: sent + mac, model, fw; not_found, invalid,
                                  unavailable, error. The engine then looks for the
                                  bulb on the show network to confirm it joined.
+
+The other radio uses take wlan0 over, so they refuse while it has an address.
 
 The engine's connection to the bulbs is on Ethernet and isn't touched: the setup
 network's route has a high metric and our socket is bound to wlan0, so this works
@@ -27,6 +37,7 @@ even if the show network is also 192.168.0.x.
 import contextlib
 import fcntl
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -93,6 +104,149 @@ def scan(ssid=None):
             return parse_scan(r.stdout)
         time.sleep(1)
     raise RuntimeError(f"scan failed: {r.stderr.strip()}")
+
+
+VENUE_ID = "dmx_smartbulb-venue"
+VENUE_CONF = Path("/run/NetworkManager/conf.d/95-dmx_smartbulb-venue.conf")
+VENUE_PROFILE = Path(f"/run/NetworkManager/system-connections/{VENUE_ID}.nmconnection")
+IN_USE = "The Pi is connected to WiFi. Turn that off first (Setup → Venue WiFi)."
+
+
+def wifi_in_use():
+    """wlan0 has an address, so taking it over would cut that connection."""
+    return bool(run("ip", "-4", "-o", "addr", "show", "dev", IFACE).stdout.strip())
+
+
+def venue_keyfile(ssid, password):
+    """A NetworkManager profile that never starts by itself. The SSID is written as bytes,
+    so any name is safe in the file."""
+    lines = ["[connection]", f"id={VENUE_ID}", "type=wifi", f"interface-name={IFACE}", "autoconnect=false", "",
+             "[wifi]", "mode=infrastructure", "ssid=" + "".join(f"{b};" for b in ssid.encode()), ""]
+    if password:
+        escaped = password.replace("\\", "\\\\")
+        lines += ["[wifi-security]", "key-mgmt=wpa-psk", f"psk={escaped}", ""]
+    # A lower metric than Ethernet's 100: the default route is the one with internet.
+    lines += ["[ipv4]", "method=auto", "route-metric=50", "", "[ipv6]", "method=disabled", ""]
+    return "\n".join(lines)
+
+
+def subnet_clash(address, others):
+    """Does this "ip/prefix" overlap any other interface's? If so the bulbs' traffic
+    could go out over WiFi."""
+    net = ipaddress.ip_interface(address).network
+    return any(net.overlaps(ipaddress.ip_interface(o).network) for o in others)
+
+
+def addresses():
+    """{interface: "ip/prefix"} for every IPv4 address except loopback."""
+    out = {}
+    for line in run("ip", "-4", "-o", "addr", "show").stdout.splitlines():
+        f = line.split()
+        if f[1] != "lo":
+            out[f[1]] = f[3]
+    return out
+
+
+def wifi_profiles():
+    rows = run("nmcli", "-t", "-f", "NAME,TYPE", "connection", "show").stdout.splitlines()
+    return [r.rsplit(":", 1)[0] for r in rows if r.endswith(":802-11-wireless")]
+
+
+def venue_status():
+    addrs = addresses()
+    connected = IFACE in addrs
+    ssid = run("nmcli", "-g", "GENERAL.CONNECTION", "device", "show", IFACE).stdout.strip() if connected else ""
+    saved = [n for n in wifi_profiles() if n != VENUE_ID]
+    message = f"Connected to {ssid}." if connected else "Not connected."
+    reply = {"result": "ok", "message": message, "connected": connected, "ssid": ssid, "ip": addrs.get(IFACE, ""),
+             "temporary": ssid == VENUE_ID, "saved": saved, "internet": ""}
+    if connected:
+        reply["internet"] = run("nmcli", "networking", "connectivity", "check", timeout=20).stdout.strip()
+    return reply
+
+
+def venue_networks():
+    if not have_radio():
+        return {"result": "unavailable", "message": NO_RADIO, "networks": []}
+    if wifi_in_use():                   # read the kernel's list: a scan could disturb the connection
+        nets = parse_scan(run("iw", "dev", IFACE, "scan", "dump").stdout)
+    else:
+        with radio():
+            nets = scan()
+    names = sorted((n for n in nets if n and not SETUP_SSID.match(n)), key=str.lower)
+    return {"result": "ok", "message": "", "networks": names}
+
+
+def venue_cleanup():
+    run("nmcli", "connection", "delete", "id", VENUE_ID)
+    VENUE_PROFILE.unlink(missing_ok=True)
+    VENUE_CONF.unlink(missing_ok=True)
+    run("systemctl", "reload", "NetworkManager")
+    time.sleep(1)
+    run("nmcli", "device", "set", IFACE, "managed", "no")
+    run("ip", "addr", "flush", "dev", IFACE)
+    run("ip", "link", "set", IFACE, "down")
+    run("rfkill", "block", "wifi")
+
+
+def venue_join(ssid, password):
+    """Setup keeps NetworkManager off wlan0 with a file in /etc that `nmcli device set`
+    can't override, so a later file in /run lifts it, and the profile lives in /run too.
+    A reboot clears both, and boot_reset() switches the radio back off."""
+    if not ssid:
+        return {"result": "invalid", "message": "Enter the network name."}
+    if re.search(r"[\x00-\x1f]", ssid + password):
+        return {"result": "invalid", "message": "The name or password has a character that can't be used."}
+    if problem := password_problem(password):
+        return {"result": "invalid", "message": problem}
+    if not have_radio():
+        return {"result": "unavailable", "message": NO_RADIO}
+    if wifi_in_use():
+        return {"result": "invalid", "message": IN_USE}
+    VENUE_CONF.parent.mkdir(parents=True, exist_ok=True)
+    VENUE_CONF.write_text("# Written by engine/wifi_helper.py; gone at the next reboot.\n[keyfile]\nunmanaged-devices=\n")
+    fd = os.open(VENUE_PROFILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(venue_keyfile(ssid, password))
+    try:
+        run("systemctl", "reload", "NetworkManager")
+        run("rfkill", "unblock", "wifi")
+        time.sleep(1)
+        run("nmcli", "device", "set", IFACE, "managed", "yes")
+        time.sleep(2)
+        run("nmcli", "device", "wifi", "list", "--rescan", "yes", timeout=20)
+        loaded = run("nmcli", "connection", "load", str(VENUE_PROFILE))
+        if loaded.returncode:
+            raise RuntimeError(loaded.stderr.strip() or "NetworkManager wouldn't load the profile")
+        up = run("nmcli", "--wait", "40", "connection", "up", "id", VENUE_ID, timeout=50)
+        if up.returncode:
+            raise RuntimeError(up.stderr.strip() or "it didn't connect")
+        addrs = addresses()
+        if IFACE not in addrs:
+            raise RuntimeError("it connected but got no address")
+        if subnet_clash(addrs[IFACE], [a for i, a in addrs.items() if i != IFACE]):
+            raise RuntimeError(f"its addresses ({addrs[IFACE]}) overlap the bulbs' network, which would cut the bulbs off")
+    except (RuntimeError, subprocess.TimeoutExpired) as e:
+        venue_cleanup()
+        return {"result": "error", "message": f"Couldn't join {ssid}: {e}. WiFi is off again."}
+    return {**venue_status(), "message": f"Connected to {ssid}."}
+
+
+def venue_leave():
+    was = run("nmcli", "-g", "GENERAL.CONNECTION", "device", "show", IFACE).stdout.strip()
+    run("nmcli", "device", "disconnect", IFACE)
+    venue_cleanup()
+    saved = [n for n in wifi_profiles() if n != VENUE_ID]
+    note = f" Saved network{'s' if len(saved) > 1 else ''} {', '.join(saved)} can still connect after a reboot." if saved else ""
+    return {"result": "ok", "message": f"WiFi off{f' (was {was})' if was and was != VENUE_ID else ''}.{note}",
+            "connected": False, "ssid": "", "ip": "", "temporary": False, "saved": saved, "internet": ""}
+
+
+def boot_reset():
+    """Radio off, unless WiFi is in use or a saved profile may be about to connect."""
+    if have_radio() and not wifi_in_use() and not wifi_profiles():
+        run("rfkill", "block", "wifi")
+    return {"result": "ok", "message": ""}
 
 
 def have_radio():
@@ -175,6 +329,8 @@ def check(ssid, password):
         return "invalid", problem
     if not have_radio():
         return "unavailable", "This Pi's WiFi radio isn't available, so the password can't be checked."
+    if wifi_in_use():
+        return "unavailable", "The password wasn't checked because the Pi is connected to WiFi."
     with radio():
         nets = scan(ssid)
         if ssid not in nets:
@@ -194,6 +350,8 @@ def check(ssid, password):
 def scan_setup():
     if not have_radio():
         return {"result": "unavailable", "message": NO_RADIO, "networks": []}
+    if wifi_in_use():
+        return {"result": "unavailable", "message": IN_USE, "networks": []}
     with radio():
         nets = scan()
     found = sorted(n for n, secured in nets.items() if SETUP_SSID.match(n) and not secured)
@@ -243,6 +401,8 @@ def pair(setup_ssid, ssid, password, alias=""):
         return {"result": "invalid", "message": problem}
     if not have_radio():
         return {"result": "unavailable", "message": NO_RADIO}
+    if wifi_in_use():
+        return {"result": "unavailable", "message": IN_USE}
     with radio():
         if setup_ssid not in scan(setup_ssid):
             return {"result": "not_found", "message": f"\"{setup_ssid}\" wasn't found. Is the bulb still in setup mode?"}
@@ -266,6 +426,16 @@ def handle(req):
         return {"result": result, "message": message}
     if op == "scan_setup":
         return scan_setup()
+    if op == "venue_status":
+        return venue_status()
+    if op == "venue_networks":
+        return venue_networks()
+    if op == "venue_join":
+        return venue_join(str(req.get("ssid", "")), str(req.get("password", "")))
+    if op == "venue_leave":
+        return venue_leave()
+    if op == "boot_reset":
+        return boot_reset()
     if op == "pair":
         return pair(str(req.get("setup_ssid", "")), str(req.get("ssid", "")), str(req.get("password", "")),
                     str(req.get("alias", ""))[:kasa.ALIAS_MAX])

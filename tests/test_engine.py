@@ -216,3 +216,10 @@ def test_change_latency_counts_each_frame_once():
     s.update_dmx(bytes(data), 1.0, 1.0)
     s.tick(1.05)
     assert len(s.latency) == 5 and len(s.change_latency) == 1
+
+
+def test_broadcast_targets_skip_wifi_and_never_come_back_empty(monkeypatch):
+    targets = kasa.broadcast_targets()
+    assert targets and all(t.count(".") == 3 for t in targets)
+    monkeypatch.setattr(kasa.socket, "if_nameindex", lambda: [(1, "lo"), (2, "wlan0")])
+    assert kasa.broadcast_targets() == ["255.255.255.255"]

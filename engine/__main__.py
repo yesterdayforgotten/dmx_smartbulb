@@ -11,7 +11,7 @@ import logging
 import sqlite3
 import sys
 
-from engine import kasa
+from engine import kasa, wifi
 from engine.config import DEFAULT_PATH, ConfigError, ConfigStore
 from engine.core import Engine
 from engine.receiver import Receiver
@@ -42,6 +42,7 @@ def cmd_run(args):
         if args.status_file:
             asyncio.create_task(write_status(engine, args.status_file))
         logging.getLogger("engine").info("web UI on port %d", cfg["web_port"])
+        asyncio.create_task(wifi.boot_reset())       # temporary venue WiFi doesn't outlive a reboot
         done, _ = await asyncio.wait({eng, web}, return_when=asyncio.FIRST_COMPLETED)
         engine._stopping = True
         server.should_exit = True

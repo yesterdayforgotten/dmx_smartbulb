@@ -40,3 +40,23 @@ async def scan_setup(path=SOCKET):
 async def pair(setup_ssid, ssid, password, alias="", path=SOCKET):
     """-> {"result": sent|not_found|invalid|unavailable|error, "message", "mac", "model", "fw"}"""
     return await _ask({"op": "pair", "setup_ssid": setup_ssid, "ssid": ssid, "password": password, "alias": alias}, path)
+
+
+async def venue_status(path=SOCKET):
+    return await _ask({"op": "venue_status"}, path)
+
+
+async def venue_networks(path=SOCKET):
+    return await _ask({"op": "venue_networks"}, path)
+
+
+async def venue_join(ssid, password, path=SOCKET):
+    return await _ask({"op": "venue_join", "ssid": ssid, "password": password}, path)
+
+
+async def venue_leave(path=SOCKET):
+    return await _ask({"op": "venue_leave"}, path)
+
+
+async def boot_reset(path=SOCKET):
+    return await _ask({"op": "boot_reset"}, path)

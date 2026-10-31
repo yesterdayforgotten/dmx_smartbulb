@@ -217,6 +217,28 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         need_auth(request)
         return {"found": await engine.find_bulbs()}
 
+    # Venue WiFi: temporary internet for the Pi. The password isn't saved in the config.
+
+    @app.get("/api/venue-wifi")
+    async def venue_wifi(request: Request):
+        need_auth(request)
+        return await wifi.venue_status()
+
+    @app.post("/api/venue-wifi/networks")
+    async def venue_wifi_networks(request: Request):
+        need_auth(request)
+        return await wifi.venue_networks()
+
+    @app.post("/api/venue-wifi/join")
+    async def venue_wifi_join(request: Request, body: dict = Body(...)):
+        need_auth(request)
+        return await wifi.venue_join(body.get("ssid") or "", body.get("password") or "")
+
+    @app.post("/api/venue-wifi/leave")
+    async def venue_wifi_leave(request: Request):
+        need_auth(request)
+        return await wifi.venue_leave()
+
     # Pairing: put a bulb in setup mode on the show network, without the Kasa app.
 
     @app.post("/api/pair/scan")

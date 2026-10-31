@@ -255,7 +255,14 @@ def wifi_blocked():
     return all((p / "soft").read_text().strip() == "1" for p in switches)
 
 
+def wifi_connected():
+    return bool(sh("ip", "-4", "-o", "addr", "show", "dev", "wlan0", check=False).stdout.strip())
+
+
 def step_wifi():
+    if wifi_connected():
+        print("  (WiFi is connected, so setup is leaving it alone; turn it off in Setup → Venue WiFi first)")
+        return Step("wifi", [])
     todo = []
     nm_src = (REPO / "deploy" / "networkmanager.conf").read_text()
     if NM_CONF.parent.is_dir() and (not NM_CONF.exists() or NM_CONF.read_text() != nm_src):
@@ -403,8 +410,11 @@ def health(write_seconds):
     except (OSError, ValueError):
         yield "DMX arriving", False, "no status file yet"
     blocked = wifi_blocked()
-    yield ("WiFi radio off", blocked is not False,
-           "no radio" if blocked is None else "" if blocked else "re-run setup to switch it off")
+    if wifi_connected():
+        yield "WiFi radio off", False, "connected to a network; turn it off in Setup → Venue WiFi"
+    else:
+        yield ("WiFi radio off", blocked is not False,
+               "no radio" if blocked is None else "" if blocked else "re-run setup to switch it off")
     if write_seconds:
         print(f"  … watching SD card writes for {write_seconds} s (--write-check 0 skips this)", flush=True)
         n = sd_writes(write_seconds)

@@ -33,7 +33,7 @@ class Engine:
         inp = cfg["input"]
         self.receiver = receiver or Receiver(inp["backend"], inp["port"], rt_priority=50)
         self.discover = discover
-        self.discovery_targets = discovery_targets or ["255.255.255.255"]
+        self._discovery_targets = discovery_targets
         self.transport = None
         self.sender = None
         self.last_seq = 0
@@ -49,6 +49,10 @@ class Engine:
         self._last_info_retry = -INFO_RETRY_S
         self._wake = asyncio.Event()
         self._stopping = False
+
+    @property
+    def discovery_targets(self):
+        return self._discovery_targets or kasa.broadcast_targets()
 
     # ---- lifecycle ---------------------------------------------------------
 

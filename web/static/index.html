@@ -147,7 +147,7 @@
           <table>
             <thead><tr><th></th><th>Bulb</th><th>Ch</th><th>Source</th><th>Status</th><th>RTT</th></tr></thead>
             <tbody>
-              <template x-for="b in bulbList()" :key="b.mac">
+              <template x-for="b in bulbList().sort((x, y) => compareBulbs(x, y))" :key="b.mac">
                 <tr @click="tapBulb(b.mac)" style="cursor:pointer" :style="selected.includes(b.mac) && 'background:var(--panel-2)'">
                   <td><span class="swatch" :style="lampStyle(b.mac, true)"></span></td>
                   <td x-text="b.name"></td>
@@ -241,7 +241,7 @@
           <thead><tr>
             <th><input type="checkbox" aria-label="Select all shown" :checked="filteredBulbs().length && filteredBulbs().every(b => selected.includes(b.mac))"
                        @change="selectShown($event.target.checked)"></th>
-            <th></th><th>Name</th><th title="First of the 3 DMX channels (hue, saturation, brightness) this bulb listens to: its own (Solo), or a group's shared one">Starting Channel</th><th>DMX</th><th>Groups</th><th>Status</th><th title="Firmware update available">FW</th><th class="num" title="Round-trip time: command sent to the bulb's reply">RTT</th><th></th>
+            <th></th><th :aria-sort="bulbAriaSort('name')"><button type="button" class="th-sort" @click="sortBulbsBy('name')" x-text="'Name' + bulbSortMark('name')"></button></th><th :aria-sort="bulbAriaSort('channel')" title="First of the 3 or 4 DMX channels this bulb listens to: its own (Solo), or a group's shared one"><button type="button" class="th-sort" @click="sortBulbsBy('channel')" x-text="'Starting Channel' + bulbSortMark('channel')"></button></th><th>DMX</th><th>Groups</th><th>Status</th><th title="Firmware update available">FW</th><th class="num" title="Round-trip time: command sent to the bulb's reply">RTT</th><th></th>
           </tr></thead>
           <tbody>
             <template x-for="b in filteredBulbs()" :key="b.mac">
@@ -520,6 +520,37 @@
         <div class="row"><button class="btn primary" type="submit" :disabled="wifiChecking"
                                  x-text="wifiChecking ? 'Checking the WiFi password…' : 'Save settings'"></button></div>
       </form>
+
+      <details class="card" style="margin-top:16px" @toggle="$el.open && venueLoad()">
+        <summary><strong>Venue WiFi (temporary)</strong></summary>
+        <div class="stack" style="margin-top:10px">
+          <p class="muted small" style="margin:0">Gives the Pi internet through the venue's WiFi, for updates or remote help. The bulbs stay on Ethernet. A reboot or <strong>Turn off</strong> puts everything back,
+            and the password isn't saved. WPA password networks only: no sign-in pages or username logins.</p>
+          <template x-if="venue.status && venue.status.connected">
+            <div class="stack">
+              <div class="row"><span class="pill ok"><span class="dot"></span><span x-text="'Connected' + (venue.status.temporary ? '' : ' to ' + venue.status.ssid)"></span></span>
+                <span class="mono small" x-text="venue.status.ip"></span><span class="muted small" x-text="venueInternetText()"></span>
+                <span style="flex:1"></span><button class="btn small danger" type="button" :disabled="!!venue.busy" @click="venueLeave()">Turn off…</button></div>
+              <p class="muted small" style="margin:0">While connected, the Pi can't pair bulbs or check the show network's password. Other people on this WiFi can reach this page's login, so turn it off when you're done.</p>
+              <p class="warn-text small" style="margin:0" x-show="venue.status.saved.length" x-text="'Saved outside this page, so it reconnects after a reboot: ' + venue.status.saved.join(', ')"></p>
+            </div>
+          </template>
+          <template x-if="venue.status && !venue.status.connected">
+            <form class="stack" @submit.prevent="venueJoin()">
+              <div class="row">
+                <label class="field" style="flex:1; min-width:180px"><span>Network name</span><input id="venuessid" type="text" list="venuenets" autocomplete="off" required x-model="venue.ssid"></label>
+                <datalist id="venuenets"><template x-for="n in venue.networks" :key="n"><option :value="n"></option></template></datalist>
+                <label class="field" style="flex:1; min-width:180px"><span>Password</span><input id="venuepw" type="password" autocomplete="off" x-model="venue.password"></label>
+              </div>
+              <div class="row"><button class="btn small primary" type="submit" :disabled="!!venue.busy">Connect</button>
+                <button class="btn small" type="button" :disabled="!!venue.busy" @click="venueFind()">Find networks</button>
+                <span class="muted small" x-show="venue.networks.length" x-text="venue.networks.length + ' found: pick one in the name box'"></span></div>
+            </form>
+          </template>
+          <p class="muted small" style="margin:0" x-show="venue.busy" x-text="venue.busy"></p>
+          <p class="error-text small" style="margin:0" x-show="venue.error" x-text="venue.error"></p>
+        </div>
+      </details>
 
       <h2>Test recordings</h2>
       <section class="card stack">

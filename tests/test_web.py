@@ -490,3 +490,30 @@ def test_recordings_can_be_deleted_but_not_while_running(tmp_path):
             assert (await c.delete("/api/recordings/config.json")).status_code == 404
             assert (h.tmp_path / "config.json").exists()
     run(go())
+
+
+def test_venue_wifi_endpoints_need_login_and_pass_through(tmp_path, monkeypatch):
+    from engine import wifi
+    joined = []
+
+    async def fake_join(ssid, password):
+        joined.append((ssid, password))
+        return {"result": "ok", "message": "Connected", "connected": True}
+
+    async def fake_status():
+        return {"result": "ok", "connected": False}
+    monkeypatch.setattr(wifi, "venue_join", fake_join)
+    monkeypatch.setattr(wifi, "venue_status", fake_status)
+
+    async def go():
+        async with Harness(tmp_path) as h:
+            c = h.client
+            assert (await c.get("/api/venue-wifi")).status_code == 401
+            assert (await c.post("/api/venue-wifi/join", json={"ssid": "x"})).status_code == 401
+            assert (await c.post("/api/venue-wifi/leave")).status_code == 401
+            await h.login()
+            assert (await c.get("/api/venue-wifi")).json()["connected"] is False
+            assert (await c.post("/api/venue-wifi/join", json={"ssid": "Cafe", "password": "hunter22"})).json()["connected"]
+            assert joined == [("Cafe", "hunter22")]
+            assert "hunter22" not in (await c.get("/api/backup")).text                # not saved
+    run(go())

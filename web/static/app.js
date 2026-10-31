@@ -29,7 +29,8 @@ function app() {
     cfg: null, warnings: [], overlaps: [], nextFree: null, fwImages: [], settings: null,
     live: null, fps: 0, _frames: null, _framesT: 0, ws: null, _wsRetry: 1000,
     view: 'map', selectMode: false, selected: [], editLayout: false, sheet: null,
-    found: null, discovering: false, pair: null, recordings: [], newGroup: '', lookName: '',
+    found: null, discovering: false, pair: null, recordings: [], bulbSort: { key: 'name', dir: 1 },
+    venue: { status: null, ssid: '', password: '', networks: [], busy: '', error: '' }, newGroup: '', lookName: '',
     info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, menuPos: { x: 0, y: 0 }, groupPopup: null, groupSheet: null,
     dmxPopup: false, assign: null, delayPop: false, bulkGroups: false, confirmDlg: null,
     board: null, boardMode: 'color', boardSel: [], boardColor: { h: 30, s: 80, v: 70 }, boardTemp: 3200,
@@ -166,6 +167,45 @@ function app() {
         setTimeout(() => this.connect(), this._wsRetry);
         this._wsRetry = Math.min(this._wsRetry * 2, 10000);
       };
+    },
+
+    // ---------- venue WiFi ----------
+    async venueLoad() {
+      try { this.venue.status = await this.api('GET', '/api/venue-wifi'); this.venue.error = ''; }
+      catch (e) { this.venue.error = e.message; }
+    },
+    async venueFind() {
+      this.venue.busy = 'Looking for networks…';
+      try {
+        const r = await this.api('POST', '/api/venue-wifi/networks');
+        this.venue.networks = r.networks || [];
+        this.venue.error = r.result === 'ok' ? '' : r.message;
+      } catch (e) { this.venue.error = e.message; }
+      this.venue.busy = '';
+    },
+    async venueJoin() {
+      this.venue.busy = 'Connecting (up to a minute)…'; this.venue.error = '';
+      try {
+        const r = await this.api('POST', '/api/venue-wifi/join', { ssid: this.venue.ssid, password: this.venue.password });
+        if (r.connected) { this.venue.status = r; this.venue.password = ''; this.say(r.message); } else this.venue.error = r.message;
+      } catch (e) { this.venue.error = e.message; }
+      this.venue.busy = '';
+    },
+    async venueLeave() {
+      const s = this.venue.status || {};
+      const viaWifi = s.ip && location.hostname === s.ip.split('/')[0];
+      const yes = await this.askConfirm({ title: 'Turn off venue WiFi?',
+        body: viaWifi ? 'You are using this page over that WiFi, so it will stop responding. Reconnect at the Pi\'s Ethernet address.' : 'The Pi loses internet. The bulbs stay connected.',
+        ok: 'Turn off', danger: true });
+      if (!yes) return;
+      this.venue.busy = 'Turning off…'; this.venue.error = '';
+      try { const r = await this.api('POST', '/api/venue-wifi/leave'); this.venue.status = r; this.say(r.message); }
+      catch (e) { this.venue.error = e.message; }
+      this.venue.busy = '';
+    },
+    venueInternetText() {
+      return { full: 'Internet works.', portal: 'This network wants a sign-in page first, so internet may not work.',
+        limited: 'Connected, but no internet.', none: 'Connected, but no internet.' }[(this.venue.status || {}).internet] || '';
     },
 
     // ---------- test recorder ----------
@@ -330,9 +370,24 @@ function app() {
     },
 
     // ---------- bulbs tab: list, status, firmware, power-on ----------
+    sortBulbsBy(key) {
+      if (this.bulbSort.key === key) this.bulbSort.dir = -this.bulbSort.dir;
+      else this.bulbSort = { key, dir: 1 };
+    },
+    bulbSortMark(key) { return this.bulbSort.key === key ? (this.bulbSort.dir > 0 ? ' ▲' : ' ▼') : ''; },
+    bulbAriaSort(key) { return this.bulbSort.key === key ? (this.bulbSort.dir > 0 ? 'ascending' : 'descending') : 'none'; },
+    compareBulbs(a, b) {
+      // Numbers in names sort as numbers (KL135 - 9 before KL135 - 10). Bulbs with no channel always go last.
+      const byName = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      if (this.bulbSort.key === 'channel') {
+        if ((a.channel == null) !== (b.channel == null)) return a.channel == null ? 1 : -1;
+        return ((a.channel ?? 0) - (b.channel ?? 0)) * this.bulbSort.dir || byName;
+      }
+      return byName * this.bulbSort.dir || (a.channel ?? 999) - (b.channel ?? 999);
+    },
     filteredBulbs() {
       const q = this.bulbFilter.trim().toLowerCase();
-      return this.bulbList().filter((b) => {
+      return this.bulbList().sort((a, b) => this.compareBulbs(a, b)).filter((b) => {
         if (q) {
           const hay = [b.name, b.ip || '', b.mac, b.mac.match(/../g).join(':'), b.channel != null ? String(b.channel) : '',
             b.follow || '', ...b.groups].join(' ').toLowerCase();

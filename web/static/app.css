@@ -253,3 +253,6 @@ input.val-box { width: 4.2em; min-height: 24px; height: 24px; padding: 0 4px; fo
 input.val-box.wide { width: 5.4em; }
 input.val-box.fader-box { width: 3.6em; text-align: center; }
 th.num { text-align: right; }
+
+.th-sort { background: none; border: 0; padding: 0; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; white-space: nowrap; }
+.th-sort:hover { color: var(--accent); }

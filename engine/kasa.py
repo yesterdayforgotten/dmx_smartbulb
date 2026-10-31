@@ -8,8 +8,10 @@ command) come back on it for online status and round-trip times.
 """
 
 import asyncio
+import fcntl
 import json
 import socket
+import struct
 import time
 
 KASA_PORT = 9999
@@ -216,6 +218,26 @@ class KasaTransport(asyncio.DatagramProtocol):
     def close(self):
         if self.transport:
             self.transport.close()
+
+
+SIOCGIFBRDADDR = 0x8919
+
+
+def broadcast_targets():
+    """Where to send discovery: each wired interface's own broadcast address. A plain
+    255.255.255.255 follows the default route, which is the venue's network, not the
+    bulbs', while the Pi is on venue WiFi."""
+    out = []
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        for _, name in socket.if_nameindex():
+            if name == "lo" or name.startswith(("wl", "p2p")):
+                continue
+            try:
+                req = struct.pack("256s", name.encode())
+                out.append(socket.inet_ntoa(fcntl.ioctl(s, SIOCGIFBRDADDR, req)[20:24]))
+            except OSError:      # no IPv4 address
+                pass
+    return [ip for ip in out if ip != "0.0.0.0"] or ["255.255.255.255"]
 
 
 async def discover(targets=("255.255.255.255",), port=KASA_PORT, timeout=2.0, bind=None):
