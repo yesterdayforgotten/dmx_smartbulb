@@ -203,8 +203,8 @@ Pi 4 ──Ethernet──▶ WiFi router LAN port
 
 The Pi is wired into a LAN port on the WiFi router, and the bulbs join that router's
 WiFi network. The Pi's own WiFi radio stays off; the engine switches it on for a few
-seconds only to check the show network's password (see [Show network](#show-network-password)),
-and later for pairing bulbs ([planned](#future-enhancements)). The router
+seconds only to check the show network's password (see [Show network](#show-network-password))
+and to [pair bulbs](#pairing-new-bulbs). The router
 has to bridge its LAN ports and WiFi into one subnet (the default on home routers),
 because:
 
@@ -271,8 +271,8 @@ been offline for 10 s or more. Reservations avoid that during a show.
    visit it asks you to choose the password venue staff will use. Then go to the
    **Bulbs** tab and press **Find bulbs**.
 
-Bulbs must already be on the WiFi network, set up with the Kasa app, before discovery
-can find them.
+**Find bulbs** finds bulbs already on the WiFi network. To put new ones on it, no Kasa app
+needed, see [Pairing new bulbs](#pairing-new-bulbs).
 
 ### Setup options
 
@@ -315,13 +315,31 @@ can find them.
 ### Show network password
 
 The first-run page and **Setup → Show network** keep the name and password of the
-WiFi network the bulbs use (needed later for pairing). When you save a new name or
+WiFi network the bulbs use (sent to them when [pairing](#pairing-new-bulbs)). When you save a new name or
 password, the Pi checks it: it switches its radio on, looks for the network, and tries
 the WPA handshake, which only succeeds with the right password. It doesn't get an address
 or join the network, and the radio is switched off again afterwards (about 5–15 s in all).
 If the network isn't found or the password is rejected, it asks whether to save it anyway.
 Only WPA2 (and WPA2/WPA3 mixed) networks can be checked; the result is logged with
 `journalctl -u 'dmx_smartbulb-wifi@*'`.
+
+### Pairing new bulbs
+
+**Bulbs → Pair new bulbs…** joins new bulbs to the show network without the Kasa app or an
+account. Save the show network first (Setup tab), then:
+
+1. Put the bulb in setup mode: with it on, flip its power off and on 5 times, about one
+   second per flip. If that doesn't work, 10 times is a full factory reset.
+2. Press **Scan again** until it's listed as `TP-LINK_Smart Bulb_XXXX`, optionally name it,
+   and press **Pair** (or **Pair all**).
+
+The Pi switches its radio on, joins the bulb's open setup network, reads its model and MAC,
+sends it the show network's name and password, and switches the radio off. It then looks
+for the bulb on the show network by MAC (up to 45 s) and adds it on the next free channel;
+a bulb it already knows keeps its name and channel. The Pi's Ethernet connection isn't
+touched. The password travels over the open setup network with only the protocol's weak
+obfuscation, so it could be captured by someone nearby during those few seconds. Tested
+with a KL135 on firmware 1.0.15.
 
 ### Configuration file
 
@@ -414,8 +432,8 @@ and Release. Bulbs follow it only if their DMX toggle is on.
   (linear, **square law** (default) or S-curve).
 - **When DMX stops**: hold the last look (default), recall a look, or blackout, after a
   set number of seconds (default 5).
-- **Identify**: blink rate and duration. **Page title**. **Show network** (saved for
-  pairing later).
+- **Identify**: blink rate and duration. **Page title**. **Show network** (what
+  bulbs are sent when pairing).
 - **Backup** / **Restore from file…**, **Change password**, **Log out**, and the bulb
   firmware images on this Pi.
 
@@ -503,12 +521,6 @@ newer firmware that only accept the encrypted KLAP protocol, and Tapo bulbs, won
 - **Logs don't survive a reboot**, by design (they're kept in RAM to spare the SD card).
 
 ## Future enhancements
-
-- **Bulb pairing from the web UI.** Today, new bulbs must be put on the WiFi network
-  with the Kasa app before discovery can find them. The plan is to do that from this
-  app instead: connect to a factory-reset bulb's setup access point and send it the
-  WiFi credentials over the local protocol, so no Kasa app or account is needed. The
-  **Show network** setting is stored for this.
 
 ## Development
 

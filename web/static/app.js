@@ -27,7 +27,7 @@ function app() {
     cfg: null, warnings: [], overlaps: [], nextFree: null, fwImages: [], settings: null,
     live: null, fps: 0, _frames: null, _framesT: 0, ws: null, _wsRetry: 1000,
     view: 'map', selectMode: false, selected: [], editLayout: false, sheet: null,
-    found: null, discovering: false, newGroup: '', lookName: '',
+    found: null, discovering: false, pair: null, newGroup: '', lookName: '',
     info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, menuPos: { x: 0, y: 0 }, groupPopup: null, groupSheet: null,
     dmxPopup: false, assign: null, delayPop: false, bulkGroups: false, confirmDlg: null,
     board: null, boardMode: 'color', boardSel: [], boardColor: { h: 30, s: 80, v: 70 }, boardTemp: 3200,
@@ -391,6 +391,47 @@ function app() {
       if (r) this.found = r.found;
     },
     newFound() { return (this.found || []).filter((f) => !f.known); },
+    // Pairing: join bulbs in setup mode to the show network (see engine/wifi_helper.py).
+    openPair() {
+      this.pair = { scanning: false, message: '', bulbs: [] };
+      if (this.cfg.network.ssid) this.pairScan();
+    },
+    pairBusy() { return !!this.pair && this.pair.bulbs.some((b) => b.state === 'sending' || b.state === 'joining'); },
+    async pairScan() {
+      this.pair.scanning = true;
+      let r;
+      try { r = await this.api('POST', '/api/pair/scan'); }
+      catch (e) { r = { result: 'error', message: e.message, networks: [] }; }
+      if (!this.pair) return;
+      this.pair.scanning = false;
+      // Keep rows already paired or named; drop ready ones whose bulb has gone.
+      const keep = this.pair.bulbs.filter((b) => b.state !== 'ready' || r.networks.includes(b.ssid));
+      const added = r.networks.filter((s) => !keep.some((b) => b.ssid === s))
+        .map((ssid) => ({ ssid, name: '', state: 'ready', message: '' }));
+      this.pair.bulbs = [...keep, ...added];
+      this.pair.message = r.result === 'ok' ? 'No bulbs in setup mode found yet.' : r.message;
+    },
+    async pairOne(b) {
+      b.state = 'sending'; b.message = 'Sending the network settings…';
+      try {
+        const r = await this.api('POST', '/api/pair', { setup_ssid: b.ssid, name: b.name });
+        if (r.result !== 'sent') throw new Error(r.message);
+        b.state = 'joining'; b.message = `Waiting for it to join ${this.cfg.network.ssid} (up to 45 s)…`;
+        const f = (await this.api('POST', '/api/pair/confirm', { mac: r.mac })).bulb;
+        if (!f) throw new Error(`It didn't appear on ${this.cfg.network.ssid}. Check the password on the Setup tab; the bulb may need resetting again.`);
+        if (f.known) {
+          b.message = `Back on the network at ${f.ip}; it keeps its name and channel.`;
+        } else {
+          await this.api('POST', '/api/bulbs', { mac: f.mac, ip: f.ip, name: b.name || f.alias, channel: 'next' });
+          b.message = `Added at ${f.ip} on the next free channel.`;
+        }
+        b.state = 'done';
+        await this.loadState();
+      } catch (e) { b.state = 'failed'; b.message = e.message; }
+    },
+    async pairAll() {
+      for (const b of this.pair.bulbs.filter((x) => x.state === 'ready' || x.state === 'failed')) await this.pairOne(b);
+    },
     async addBulb(f) {
       const r = await this.act(this.api('POST', '/api/bulbs', { mac: f.mac, ip: f.ip, name: f.alias, channel: 'next' }), `Added ${f.alias}`);
       if (r) { f.known = true; await this.loadState(); }

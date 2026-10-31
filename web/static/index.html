@@ -202,6 +202,7 @@
           <option value="update">Firmware update available</option>
           <option value="manual">Manual / look</option>
         </select>
+        <button class="btn small" type="button" @click="openPair()">Pair new bulbs…</button>
         <button class="btn small primary" type="button" @click="discover()" :disabled="discovering" x-text="discovering ? 'Searching…' : 'Find bulbs'"></button>
       </div>
       <div class="toolbar selection-bar" :class="!selected.length && 'idle'" :aria-hidden="!selected.length">
@@ -580,6 +581,39 @@
     </div>
   </template>
 
+
+  <!-- ================= pair new bulbs ================= -->
+  <template x-if="pair">
+    <div class="backdrop" @click.self="!pairBusy() && (pair = null)">
+      <div class="sheet stack" role="dialog" aria-modal="true" aria-label="Pair new bulbs">
+        <div class="row"><strong>Pair new bulbs</strong><span style="flex:1"></span>
+          <button class="btn small" type="button" :disabled="pairBusy()" @click="pair = null">Close</button></div>
+        <template x-if="!cfg.network.ssid">
+          <div class="warn-box">Set the show network's name and password on the Setup tab first: bulbs are sent those.</div>
+        </template>
+        <template x-if="cfg.network.ssid">
+          <div class="stack">
+            <p class="muted small" style="margin:0">Put each bulb in setup mode: with it on, flip its power off and on 5 times, about one second per flip
+              (10 times for a full factory reset if that doesn't work). Leave it on, then scan.
+              Bulbs join <strong x-text="cfg.network.ssid"></strong>. The password is sent over the bulb's open setup network, as with the Kasa app.</p>
+            <div class="row">
+              <button class="btn small" type="button" @click="pairScan()" :disabled="pair.scanning || pairBusy()" x-text="pair.scanning ? 'Scanning…' : 'Scan again'"></button>
+              <button class="btn small primary" type="button" x-show="pair.bulbs.some(b => b.state === 'ready' || b.state === 'failed')" :disabled="pairBusy()" @click="pairAll()">Pair all</button>
+            </div>
+            <p class="muted small" style="margin:0" x-show="!pair.scanning && !pair.bulbs.length" x-text="pair.message"></p>
+            <template x-for="b in pair.bulbs" :key="b.ssid">
+              <div class="row" style="padding:6px 0; border-top:1px solid var(--line)">
+                <span class="mono" x-text="b.ssid"></span>
+                <input type="text" maxlength="31" placeholder="Name (optional)" aria-label="Name for this bulb" x-model="b.name" :disabled="b.state !== 'ready' && b.state !== 'failed'" style="flex:1; min-width:120px">
+                <button class="btn small" type="button" x-show="b.state === 'ready' || b.state === 'failed'" :disabled="pairBusy()" @click="pairOne(b)" x-text="b.state === 'failed' ? 'Retry' : 'Pair'"></button>
+                <div class="small" style="flex-basis:100%" :class="b.state === 'failed' && 'error-text'" x-show="b.message" x-text="b.message"></div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+    </div>
+  </template>
 
   <!-- ================= assign channels ================= -->
   <template x-if="assign">

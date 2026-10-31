@@ -319,3 +319,44 @@ def test_wifi_check_uses_the_saved_password_and_needs_login_after_setup(tmp_path
             c.cookies.clear()
             assert (await c.post("/api/wifi/check", json={"ssid": "x", "password": "y"})).status_code == 401
     run(go())
+
+
+def test_pair_flow_adds_a_new_bulb_and_keeps_a_known_one(tmp_path, monkeypatch):
+    from engine import wifi
+    sent = []
+
+    async def fake_scan():
+        return {"result": "ok", "message": "", "networks": ["TP-LINK_Smart Bulb_7B7F"]}
+
+    async def fake_pair(setup_ssid, ssid, password, alias=""):
+        sent.append((setup_ssid, ssid, password, alias))
+        return {"result": "sent", "message": "", "mac": mac}
+    monkeypatch.setattr(wifi, "scan_setup", fake_scan)
+    monkeypatch.setattr(wifi, "pair", fake_pair)
+
+    async def go():
+        nonlocal mac
+        async with Harness(tmp_path) as h:
+            c = h.client
+            assert (await c.post("/api/pair/scan")).status_code == 401
+            await h.login()
+            assert (await c.post("/api/pair", json={"setup_ssid": "TP-LINK_Smart Bulb_7B7F"})).status_code == 400   # no network saved
+            await c.put("/api/settings", json={"network": {"ssid": "ShowNet", "password": "hunter22"}})
+            assert (await c.post("/api/pair/scan")).json()["networks"] == ["TP-LINK_Smart Bulb_7B7F"]
+            mac = list(h.engine.cfg["bulbs"])[2]
+            await c.delete(f"/api/bulbs/{mac}")
+            r = (await c.post("/api/pair", json={"setup_ssid": "TP-LINK_Smart Bulb_7B7F", "name": "Stage"})).json()
+            assert r["mac"] == mac and sent[-1] == ("TP-LINK_Smart Bulb_7B7F", "ShowNet", "hunter22", "Stage")
+            found = (await c.post("/api/pair/confirm", json={"mac": mac})).json()["bulb"]
+            assert found["mac"] == mac and found["known"] is False
+            known = list(h.engine.cfg["bulbs"])[0]
+            assert (await c.post("/api/pair/confirm", json={"mac": known})).json()["bulb"]["known"] is True
+    mac = None
+    run(go())
+
+
+def test_wait_for_bulb_gives_up(tmp_path):
+    async def go():
+        async with Harness(tmp_path) as h:
+            assert await h.engine.wait_for_bulb("AABBCCDDEEFF", timeout=0.1) is None
+    run(go())

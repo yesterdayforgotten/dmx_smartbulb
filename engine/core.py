@@ -372,6 +372,19 @@ class Engine:
                         "known": mac in self.cfg["bulbs"]})
         return out
 
+    async def wait_for_bulb(self, mac, timeout=45.0):
+        """After pairing: look for a bulb on the show network by MAC. Returns its
+        find_bulbs entry, or None if it didn't show up in time."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            for f in await self.find_bulbs():
+                if f["mac"] == mac:
+                    if f["known"]:
+                        await self.rediscover()        # a known bulb's IP may have changed
+                    return f
+            await asyncio.sleep(1.0)
+        return None
+
     async def set_power_on(self, macs, state):
         """Set each bulb's power-on default; returns {mac: ok}. state is
         ("temp", k, v), ("hsv", h, s, v) or ("last",) for "come back as it was"."""

@@ -206,6 +206,26 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         need_auth(request)
         return {"found": await engine.find_bulbs()}
 
+    # Pairing: put a bulb in setup mode on the show network, without the Kasa app.
+
+    @app.post("/api/pair/scan")
+    async def pair_scan(request: Request):
+        need_auth(request)
+        return await wifi.scan_setup()
+
+    @app.post("/api/pair")
+    async def pair(request: Request, body: dict = Body(...)):
+        need_auth(request)
+        net = engine.cfg["network"]
+        if not net["ssid"]:
+            raise HTTPException(400, "set the show network's name and password on the Setup tab first")
+        return await wifi.pair(body.get("setup_ssid") or "", net["ssid"], net["password"], body.get("name") or "")
+
+    @app.post("/api/pair/confirm")
+    async def pair_confirm(request: Request, body: dict = Body(...)):
+        need_auth(request)
+        return {"bulb": await engine.wait_for_bulb((body.get("mac") or "").upper())}
+
     @app.post("/api/bulbs")
     async def add_bulb(request: Request, body: dict = Body(...)):
         need_auth(request)
