@@ -10,7 +10,7 @@
 <script src="app.js"></script>
 <script defer src="vendor/alpine.min.js"></script>
 </head>
-<body x-data="app()" x-init="init()" @keydown.escape.window="closeConfirm(false); closeSheet(); groupPopup = null; menuFor = null; dmxPopup = false; assign = null; bulkGroups = false; if (!pairBusy()) pair = null">
+<body x-data="app()" x-init="init()" @keydown.escape.window="closeConfirm(false); closeSheet(); groupPopup = null; menuFor = null; dmxPopup = false; assign = null; bulkGroups = false; if (!pairBusy()) pair = null; if (progress && !progress.running) progress = null">
 
 <!-- ================= first run / login ================= -->
 <template x-if="loaded && !session.authenticated">
@@ -631,6 +631,23 @@
     </div>
   </template>
 
+
+  <!-- ================= bulk update progress ================= -->
+  <template x-if="progress">
+    <div class="backdrop" @click.self="!progress.running && (progress = null)">
+      <div class="sheet stack" role="dialog" aria-modal="true" :aria-label="progress.title">
+        <strong x-text="progress.title"></strong>
+        <div class="progress" role="progressbar" :aria-valuenow="progress.done" :aria-valuemax="progress.total"><div :style="`width:${progress.total ? 100 * progress.done / progress.total : 100}%`"></div></div>
+        <div class="muted small" x-text="progress.running ? `${progress.done} of ${progress.total} done · ${progress.current}` : `Finished: ${progress.done - progress.failed.length} of ${progress.total} confirmed` + (progress.done < progress.total ? ` (stopped, ${progress.total - progress.done} not tried)` : '')"></div>
+        <div class="error-text small" x-show="progress.failed.length" x-text="`Didn't confirm: ${bulkNames(progress.failed)}`"></div>
+        <div class="row" style="justify-content:flex-end">
+          <button class="btn" type="button" x-show="progress.running" :disabled="progress.stop" @click="progress.stop = true" x-text="progress.stop ? 'Stopping…' : 'Stop'"></button>
+          <button class="btn" type="button" x-show="!progress.running && progress.retry" @click="progress.retry()">Retry those</button>
+          <button class="btn primary" type="button" x-show="!progress.running" @click="progress = null">Close</button>
+        </div>
+      </div>
+    </div>
+  </template>
 
   <!-- ================= pair new bulbs ================= -->
   <template x-if="pair">

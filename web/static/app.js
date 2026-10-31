@@ -41,7 +41,7 @@ function app() {
     cfg: null, warnings: [], overlaps: [], nextFree: null, fwImages: [], settings: null,
     live: null, fps: 0, _frames: null, _framesT: 0, ws: null, _wsRetry: 1000,
     view: 'map', selectMode: false, selected: [], editLayout: false, sheet: null,
-    found: null, discovering: false, pair: null, recordings: [], bulbSort: { key: 'name', dir: 1 },
+    found: null, discovering: false, pair: null, recordings: [], progress: null, bulbSort: { key: 'name', dir: 1 },
     venue: { status: null, ssid: '', password: '', networks: [], busy: '', error: '' }, newGroup: '', lookName: '',
     info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, menuPos: { x: 0, y: 0 }, groupPopup: null, groupSheet: null,
     dmxPopup: false, assign: null, delayPop: false, bulkGroups: false, confirmDlg: null,
@@ -724,13 +724,32 @@ function app() {
       const macs = this.targets(true);
       const p = this.powerOn;
       const state = p.mode === 'last' ? { mode: 'last' } : p.mode === 'color' ? { h: p.h, s: p.s, v: p.v } : { k: p.k, v: p.v };
-      const r = await this.act(this.api('POST', '/api/power-on', { macs, state }));
-      if (r) {
-        const bad = Object.entries(r.results).filter(([, ok]) => !ok).length;
-        this.say(bad ? `${bad} bulb(s) didn't confirm` : `Power-on default set on ${macs.length} bulb(s)`, !!bad);
-        await this.loadState();               // the Pi read the new defaults back
-      }
+      await this.runBulk('Setting the power-on default', macs, async (mac) => {
+        const r = await this.api('POST', '/api/power-on', { macs: [mac], state });
+        return r.results[mac];
+      });
     },
+    async runBulk(title, macs, one) {
+      // Runs one(mac) -> true/false for each bulb in turn, with progress in a popup. The
+      // Pi updates bulbs one at a time anyway, and an offline bulb takes about 3 s.
+      const job = { title, total: macs.length, done: 0, failed: [], current: '', running: true, stop: false, retry: null };
+      this.progress = job;
+      const run = this.progress;                // Alpine's reactive copy: changes to it update the popup
+      for (const mac of macs) {
+        if (run.stop) break;
+        run.current = (this.cfg.bulbs[mac] || {}).name || mac;
+        let ok = false;
+        try { ok = await one(mac); } catch (e) { ok = false; }
+        if (!ok) run.failed.push(mac);
+        run.done += 1;
+      }
+      run.running = false;
+      run.current = '';
+      const failed = [...run.failed];
+      if (failed.length) run.retry = () => this.runBulk(title, failed, one);
+      await this.loadState();                   // the Pi read the new values back
+    },
+    bulkNames(macs) { return macs.map((m) => (this.cfg.bulbs[m] || {}).name || m).join(', '); },
     fwJob(mac) { return this.live && this.live.firmware && this.live.firmware[mac]; },
     async updateFirmware(mac) {
       const b = this.cfg.bulbs[mac] || {}, inf = this.info[mac] || {};
