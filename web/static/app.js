@@ -17,6 +17,18 @@ function hsvToRgb(h, s, v) {
   return [f(5), f(3), f(1)].map((x) => Math.round(x * 255));
 }
 
+// A popup's backdrop closes it on click, but a drag that starts in a text box and ends
+// on the backdrop also counts as a click there. Only let a click through if the press
+// and the release were both on the backdrop.
+let pressedOn = null, releasedOn = null;
+document.addEventListener('pointerdown', (ev) => { pressedOn = ev.target; }, true);
+document.addEventListener('pointerup', (ev) => { releasedOn = ev.target; }, true);
+document.addEventListener('click', (ev) => {
+  if (ev.target.classList && ev.target.classList.contains('backdrop') && (pressedOn !== ev.target || releasedOn !== ev.target)) {
+    ev.stopPropagation();
+  }
+}, true);
+
 const PAIR_OPEN_MS = 10 * 60 * 1000;   // the pairing popup closes itself after this
 
 function app() {
