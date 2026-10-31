@@ -214,6 +214,7 @@
         <strong x-text="`${selected.length} selected`"></strong>
         <button class="btn small" type="button" @click="bulkGroups = true">Groups…</button>
         <button class="btn small" type="button" @click="openAssign()">Assign channels…</button>
+        <button class="btn small" type="button" x-show="updatableSelected().length" @click="updateFirmwareSelected()" x-text="`Update firmware (${updatableSelected().length})…`"></button>
         <select class="small-select" aria-label="Set channel mode for the selected bulbs" @change="$event.target.value && setModes([...selected], $event.target.value); $event.target.value = ''">
           <option value="">Mode…</option><option value="hsi">HSI (3 channels)</option><option value="hsic">HSIC (4 channels)</option>
         </select>
@@ -638,10 +639,12 @@
       <div class="sheet stack" role="dialog" aria-modal="true" :aria-label="progress.title">
         <strong x-text="progress.title"></strong>
         <div class="progress" role="progressbar" :aria-valuenow="progress.done" :aria-valuemax="progress.total"><div :style="`width:${progress.total ? 100 * progress.done / progress.total : 100}%`"></div></div>
-        <div class="muted small" x-text="progress.running ? `${progress.done} of ${progress.total} done · ${progress.current}` : `Finished: ${progress.done - progress.failed.length} of ${progress.total} confirmed` + (progress.done < progress.total ? ` (stopped, ${progress.total - progress.done} not tried)` : '')"></div>
+        <div class="muted small" x-text="progress.running ? `${progress.done} of ${progress.total} done` + (progress.active.length ? ` · ${bulkNames(progress.active)}` : '') : `Finished: ${progress.done - progress.failed.length - progress.skipped.length} of ${progress.total} confirmed` + (progress.done < progress.total ? ` (stopped, ${progress.total - progress.done} not done)` : '')"></div>
+        <div class="muted small" x-show="progress.running && progress.stop && progress.finishesInFlight">Letting the bulbs already updating finish. Don't cut their power.</div>
         <div class="error-text small" x-show="progress.failed.length" x-text="`Didn't confirm: ${bulkNames(progress.failed)}`"></div>
+        <div class="warn-text small" x-show="progress.skipped.length" x-text="`Skipped, offline: ${bulkNames(progress.skipped)}`"></div>
         <div class="row" style="justify-content:flex-end">
-          <button class="btn" type="button" x-show="progress.running" :disabled="progress.stop" @click="progress.stop = true" x-text="progress.stop ? 'Stopping…' : 'Stop'"></button>
+          <button class="btn" type="button" x-show="progress.running" :disabled="progress.stop" @click="stopBulk()" x-text="progress.stop ? 'Stopping…' : 'Stop'"></button>
           <button class="btn" type="button" x-show="!progress.running && progress.retry" @click="progress.retry()">Retry those</button>
           <button class="btn primary" type="button" x-show="!progress.running" @click="progress = null">Close</button>
         </div>

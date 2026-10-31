@@ -507,7 +507,8 @@ aren't in the repo). Setup downloads and checks them into
 `sudo -u dmxbulb .venv/bin/python -m engine firmware fetch` while the Pi has internet.
 Bulbs then update from the Pi, so the venue doesn't need internet.
 
-To update a bulb, use **Update firmware** in its ⋮ menu on the Bulbs tab (the FW column
+To update several, select them on the Bulbs tab and press **Update firmware**, which does up to 4
+at a time with a progress popup. To update one, use **Update firmware** in its ⋮ menu on the Bulbs tab (the FW column
 shows which bulbs have an update). It's refused while DMX is live, because the bulb
 blacks out while updating; turn DMX off from the DMX pill or unplug the desk first.
 

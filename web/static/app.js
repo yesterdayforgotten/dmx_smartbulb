@@ -122,10 +122,10 @@ function app() {
     },
 
     // ---------- API ----------
-    async api(method, path, body) {
+    async api(method, path, body, signal) {
       const r = await fetch(path, {
         method, headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined, signal,
       });
       if (r.status === 401 && !path.startsWith('/api/login')) {
         this.session.authenticated = false;
@@ -724,30 +724,66 @@ function app() {
       const macs = this.targets(true);
       const p = this.powerOn;
       const state = p.mode === 'last' ? { mode: 'last' } : p.mode === 'color' ? { h: p.h, s: p.s, v: p.v } : { k: p.k, v: p.v };
-      await this.runBulk('Setting the power-on default', macs, async (mac) => {
-        const r = await this.api('POST', '/api/power-on', { macs: [mac], state });
+      await this.runBulk('Setting the power-on default', macs, async (mac, signal) => {
+        const r = await this.api('POST', '/api/power-on', { macs: [mac], state }, signal);
         return r.results[mac];
       });
     },
-    async runBulk(title, macs, one) {
-      // Runs one(mac) -> true/false for each bulb in turn, with progress in a popup. The
-      // Pi updates bulbs one at a time anyway, and an offline bulb takes about 3 s.
-      const job = { title, total: macs.length, done: 0, failed: [], current: '', running: true, stop: false, retry: null };
-      this.progress = job;
+    async runBulk(title, macs, one, { parallel = 1, finishesInFlight = false } = {}) {
+      // Runs one(mac, signal) -> true/false over the bulbs, with progress in a popup. Offline
+      // bulbs are skipped straight away, since each would otherwise wait out its timeouts.
+      // Stop cancels requests in flight, unless they have to finish (a bulb that's flashing).
+      const ctl = new AbortController();
+      const queue = [...macs];
+      this.progress = { title, total: macs.length, done: 0, failed: [], skipped: [], active: [], running: true,
+        stop: false, finishesInFlight, retry: null, abort: () => { if (!finishesInFlight) ctl.abort(); } };
       const run = this.progress;                // Alpine's reactive copy: changes to it update the popup
-      for (const mac of macs) {
-        if (run.stop) break;
-        run.current = (this.cfg.bulbs[mac] || {}).name || mac;
-        let ok = false;
-        try { ok = await one(mac); } catch (e) { ok = false; }
-        if (!ok) run.failed.push(mac);
-        run.done += 1;
-      }
+      const worker = async () => {
+        while (queue.length && !run.stop) {
+          const mac = queue.shift();
+          if (!this.isOnline(mac)) { run.skipped.push(mac); run.done += 1; continue; }
+          run.active.push(mac);
+          let ok = false, cancelled = false;
+          try { ok = await one(mac, ctl.signal); } catch (e) { cancelled = e.name === 'AbortError'; }
+          run.active = run.active.filter((m) => m !== mac);
+          if (cancelled) return;
+          if (!ok) run.failed.push(mac);
+          run.done += 1;
+        }
+      };
+      await Promise.all(Array.from({ length: parallel }, worker));
       run.running = false;
-      run.current = '';
-      const failed = [...run.failed];
-      if (failed.length) run.retry = () => this.runBulk(title, failed, one);
+      const again = [...run.failed, ...run.skipped];
+      if (again.length) run.retry = () => this.runBulk(title, again, one, { parallel, finishesInFlight });
       await this.loadState();                   // the Pi read the new values back
+    },
+    stopBulk() { this.progress.stop = true; this.progress.abort(); },
+    updatableSelected() { return this.selected.filter((m) => this.fwUpdatable(m)); },
+    async updateFirmwareSelected() {
+      const macs = this.updatableSelected();
+      if (!macs.length) { this.say('None of the selected bulbs has an update available'); return; }
+      const yes = await this.askConfirm({ title: `Update firmware on ${macs.length} bulb(s)?`,
+        body: 'Each bulb downloads the update from this Pi, restarts and is dark for about a minute, up to 4 at a time. Don\'t cut their power or reboot the Pi until this finishes. Trying 2 bulbs first is the safe way to start.',
+        ok: 'Update firmware' });
+      if (!yes) return;
+      await this.runBulk('Updating firmware', macs, (mac) => this.firmwareOne(mac), { parallel: 4, finishesInFlight: true });
+    },
+    async firmwareOne(mac) {
+      // True once the bulb reports the new version. The update runs on the Pi; its state comes over the live feed.
+      const inf = this.info[mac] || {};
+      const img = this.fwImages.find((i) => i.model === inf.model && i.hw_ver === inf.hw_ver);
+      if (!img) return false;
+      const want = img.version.split(' ')[0];
+      try { await this.api('POST', `/api/bulbs/${mac}/firmware`, {}); }
+      catch (e) { return e.message.startsWith('already up to date'); }
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      await sleep(3000);                        // the feed may still show an earlier job until now
+      for (const end = Date.now() + 5 * 60 * 1000; Date.now() < end; await sleep(2000)) {
+        const job = this.fwJob(mac);
+        if (job && job.state === 'done') return (job.version || '').split(' ')[0] === want;
+        if (job && job.state === 'failed') return false;
+      }
+      return false;
     },
     bulkNames(macs) { return macs.map((m) => (this.cfg.bulbs[m] || {}).name || m).join(', '); },
     fwJob(mac) { return this.live && this.live.firmware && this.live.firmware[mac]; },
