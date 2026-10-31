@@ -60,6 +60,12 @@ DEFAULTS = {
     "identify": {"blink_hz": 2.0, "duration_s": 4.0},
     "ui": {"title": "DMX Smart Bulb Control Panel"},
     "network": {"ssid": "", "password": ""},
+    "relay": {                       # cloud relay: give bulbs a working cloud connection with no venue internet
+        "enabled": False,
+        "ssid": "",                  # the Pi's WiFi uplink to the internet (e.g. venue WiFi)
+        "password": "",              # stored so the Pi can reconnect at boot (readable on the SD card)
+        "allow": ["n-devs.tplinkcloud.com"],   # cloud hostnames to forward; n-deventry is refused on purpose
+    },
     "auth": {"password_hash": None, "session_secret": None},
     "kasa_port": 9999,
     "web_port": 80,
@@ -211,6 +217,15 @@ def validate(raw):
 
     if problems:
         raise ConfigError(problems)
+    r = cfg["relay"]
+    if not isinstance(r.get("enabled"), bool):
+        r["enabled"] = False
+    for k in ("ssid", "password"):
+        if not isinstance(r.get(k), str):
+            r[k] = ""
+    if not (isinstance(r.get("allow"), list) and r["allow"] and all(isinstance(x, str) and x for x in r["allow"])):
+        r["allow"] = ["n-devs.tplinkcloud.com"]
+
     return cfg
 
 

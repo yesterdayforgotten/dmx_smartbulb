@@ -1,0 +1,15 @@
+# Installed by setup. Cloud relay + SNTP so Kasa bulbs keep a cloud connection with no
+# venue internet. Runs as root (binds :443/:123, sets the wlan0 firewall).
+[Unit]
+Description=DMX Smart Bulbs cloud relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStartPre=@REPO@/deploy/wlan0-firewall.sh
+ExecStart=/usr/bin/python3 -I @REPO@/engine/relay_service.py /var/lib/dmx_smartbulb/config.json
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

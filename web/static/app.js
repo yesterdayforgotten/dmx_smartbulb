@@ -42,7 +42,8 @@ function app() {
     live: null, fps: 0, _frames: null, _framesT: 0, ws: null, _wsRetry: 1000,
     view: 'map', selectMode: false, selected: [], editLayout: false, sheet: null,
     found: null, discovering: false, pair: null, recordings: [], progress: null, bulbSort: { key: 'name', dir: 1 },
-    venue: { status: null, ssid: '', password: '', networks: [], busy: '', error: '' }, newGroup: '', lookName: '',
+    venue: { status: null, ssid: '', password: '', networks: [], busy: '', error: '' },
+    relay: { data: null, ssid: '', password: '', networks: [], busy: '', error: '' }, newGroup: '', lookName: '',
     info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, menuPos: { x: 0, y: 0 }, groupPopup: null, groupSheet: null,
     dmxPopup: false, assign: null, delayPop: false, bulkGroups: false, confirmDlg: null,
     board: null, boardMode: 'color', boardSel: [], boardColor: { h: 30, s: 80, v: 70 }, boardTemp: 3200,
@@ -190,6 +191,41 @@ function app() {
     },
 
     // ---------- venue WiFi ----------
+    async relayLoad() {
+      try { this.relay.data = await this.api('GET', '/api/relay'); this.relay.error = ''; }
+      catch (e) { this.relay.error = e.message; }
+    },
+    relayInternetText() {
+      const u = this.relay.data && this.relay.data.uplink;
+      if (!u || !u.connected) return '';
+      return { full: 'internet OK', portal: 'needs a sign-in page', limited: 'connected, no internet', none: 'connected, no internet' }[u.internet] || '';
+    },
+    async relayFind() {
+      this.relay.busy = 'Scanning for networks\u2026';
+      try { const r = await this.api('POST', '/api/relay/networks'); this.relay.networks = r.networks || []; this.relay.error = r.result === 'ok' ? '' : r.message; }
+      catch (e) { this.relay.error = e.message; }
+      this.relay.busy = '';
+    },
+    async relaySetUplink() {
+      const ssid = this.relay.ssid || (this.relay.data && this.relay.data.config.ssid) || '';
+      if (!ssid) { this.relay.error = 'Enter a network name.'; return; }
+      this.relay.busy = 'Connecting (up to a minute)\u2026'; this.relay.error = '';
+      try {
+        const r = await this.api('POST', '/api/relay/uplink', { ssid, password: this.relay.password });
+        if (r.connected) { this.relay.ssid = ''; this.relay.password = ''; this.say(r.message); await this.relayLoad(); }
+        else this.relay.error = r.message;
+      } catch (e) { this.relay.error = e.message; }
+      this.relay.busy = '';
+    },
+    async relayForget() {
+      const yes = await this.askConfirm({ title: 'Turn off the WiFi uplink?',
+        body: 'The bulbs will start dropping off every ~10 minutes again. The bulbs and this page stay reachable on the show network.', ok: 'Turn off', danger: true });
+      if (!yes) return;
+      this.relay.busy = 'Turning off\u2026'; this.relay.error = '';
+      try { await this.api('POST', '/api/relay/forget'); await this.relayLoad(); this.say('WiFi uplink off'); }
+      catch (e) { this.relay.error = e.message; }
+      this.relay.busy = '';
+    },
     async venueLoad() {
       try { this.venue.status = await this.api('GET', '/api/venue-wifi'); this.venue.error = ''; }
       catch (e) { this.venue.error = e.message; }

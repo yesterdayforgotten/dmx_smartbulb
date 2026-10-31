@@ -60,3 +60,19 @@ async def venue_leave(path=SOCKET):
 
 async def boot_reset(path=SOCKET):
     return await _ask({"op": "boot_reset"}, path)
+
+
+async def uplink_status(path=SOCKET):
+    return await _ask({"op": "uplink_status"}, path)
+
+
+async def uplink_networks(path=SOCKET):
+    return await _ask({"op": "uplink_networks"}, path)
+
+
+async def uplink_set(ssid, password, path=SOCKET):
+    return await _ask({"op": "uplink_set", "ssid": ssid, "password": password}, path)
+
+
+async def uplink_forget(path=SOCKET):
+    return await _ask({"op": "uplink_forget"}, path)

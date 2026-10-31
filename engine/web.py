@@ -239,6 +239,48 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         need_auth(request)
         return await wifi.venue_leave()
 
+    # Cloud relay: give bulbs a cloud connection with no venue internet. The Pi's WiFi
+    # uplink and the allowed cloud hosts are configurable here; the relay runs as its own
+    # root service (dmx_smartbulb-relay) and is reported from /dev/shm/dmx_relay.json.
+
+    def relay_runtime():
+        try:
+            return json.loads(Path("/dev/shm/dmx_relay.json").read_text())
+        except (OSError, ValueError):
+            return {}
+
+    @app.get("/api/relay")
+    async def relay_state(request: Request):
+        need_auth(request)
+        cfg = engine.cfg["relay"]
+        return {"config": {"enabled": cfg["enabled"], "ssid": cfg["ssid"],
+                           "has_password": bool(cfg["password"]), "allow": cfg["allow"]},
+                "uplink": await wifi.uplink_status(), "runtime": relay_runtime()}
+
+    @app.post("/api/relay/networks")
+    async def relay_networks(request: Request):
+        need_auth(request)
+        return await wifi.uplink_networks()
+
+    @app.post("/api/relay/uplink")
+    async def relay_uplink(request: Request, body: dict = Body(...)):
+        need_auth(request)
+        ssid = (body.get("ssid") or "").strip()
+        password = body.get("password") or ""
+        if password == "********":                        # keep the saved password
+            password = engine.cfg["relay"]["password"]
+        r = await wifi.uplink_set(ssid, password)
+        if r.get("connected"):
+            change(lambda c: c["relay"].update(enabled=True, ssid=ssid, password=password))
+        return r
+
+    @app.post("/api/relay/forget")
+    async def relay_forget(request: Request):
+        need_auth(request)
+        r = await wifi.uplink_forget()
+        change(lambda c: c["relay"].update(enabled=False, ssid="", password=""))
+        return r
+
     # Pairing: put a bulb in setup mode on the show network, without the Kasa app.
 
     @app.post("/api/pair/scan")

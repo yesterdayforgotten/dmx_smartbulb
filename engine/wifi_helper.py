@@ -424,6 +424,93 @@ def pair(setup_ssid, ssid, password, alias=""):
     return {"result": "sent", "message": f"Sent the network settings to {bulb['model']}.", **bulb}
 
 
+UPLINK_ID = "dmx_smartbulb-uplink"
+UPLINK_PROFILE = Path(f"/etc/NetworkManager/system-connections/{UPLINK_ID}.nmconnection")
+REPO = Path(__file__).resolve().parent.parent
+
+
+def uplink_keyfile(ssid, password):
+    """A persistent NetworkManager profile for the relay's internet uplink: autoconnects
+    at boot, low route metric so the wired show network keeps the default LAN."""
+    lines = ["[connection]", f"id={UPLINK_ID}", "type=wifi", f"interface-name={IFACE}",
+             "autoconnect=true", "autoconnect-priority=10", "",
+             "[wifi]", "mode=infrastructure", "ssid=" + "".join(f"{b};" for b in ssid.encode()), ""]
+    if password:
+        esc = password.replace("\\", "\\\\")
+        lines += ["[wifi-security]", "key-mgmt=wpa-psk", f"psk={esc}", ""]
+    lines += ["[ipv4]", "method=auto", "route-metric=50", "", "[ipv6]", "method=disabled", ""]
+    return "\n".join(lines)
+
+
+def apply_firewall():
+    script = REPO / "deploy" / "wlan0-firewall.sh"
+    if script.exists():
+        run("sh", str(script))
+
+
+def uplink_status():
+    addrs = addresses()
+    connected = IFACE in addrs
+    conn = run("nmcli", "-g", "GENERAL.CONNECTION", "device", "show", IFACE).stdout.strip() if connected else ""
+    m = re.search(r"SSID: (.+)", run("iw", "dev", IFACE, "link").stdout)
+    ssid = (m.group(1).strip() if m else conn) if connected else ""
+    internet = run("nmcli", "networking", "connectivity", "check", timeout=15).stdout.strip() if connected else ""
+    return {"result": "ok", "message": "", "connected": connected, "ssid": ssid, "ip": addrs.get(IFACE, ""),
+            "internet": internet, "managed": conn == UPLINK_ID}
+
+
+def uplink_set(ssid, password):
+    if not ssid:
+        return {"result": "invalid", "message": "Enter the network name."}
+    if re.search(r"[\x00-\x1f]", ssid + password):
+        return {"result": "invalid", "message": "The name or password has a character that can't be used."}
+    if problem := password_problem(password):
+        return {"result": "invalid", "message": problem}
+    if not have_radio():
+        return {"result": "unavailable", "message": NO_RADIO}
+    run("rfkill", "unblock", "wifi")
+    run("nmcli", "device", "set", IFACE, "managed", "yes")
+    fd = os.open(UPLINK_PROFILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(uplink_keyfile(ssid, password))
+    for name in wifi_profiles():                      # only our profile autoconnects at boot
+        if name != UPLINK_ID:
+            run("nmcli", "connection", "modify", name, "connection.autoconnect", "no")
+    run("nmcli", "connection", "reload")
+    up = run("nmcli", "--wait", "40", "connection", "up", UPLINK_ID, timeout=50)
+    if up.returncode:
+        return {"result": "error", "message": up.stderr.strip() or f"Couldn't join {ssid}."}
+    addrs = addresses()
+    if IFACE not in addrs:
+        return {"result": "error", "message": "Connected but got no address from the network."}
+    if subnet_clash(addrs[IFACE], [a for i, a in addrs.items() if i != IFACE]):
+        return {"result": "error", "message": f"Its address ({addrs[IFACE]}) overlaps the bulbs' network."}
+    apply_firewall()
+    return {**uplink_status(), "message": f"Connected to {ssid}."}
+
+
+def uplink_forget():
+    run("nmcli", "connection", "delete", "id", UPLINK_ID)
+    UPLINK_PROFILE.unlink(missing_ok=True)
+    return {"result": "ok", "message": "Uplink removed.", "connected": False, "ssid": "", "ip": "", "internet": "", "managed": False}
+
+
+def uplink_networks():
+    if not have_radio():
+        return {"result": "unavailable", "message": NO_RADIO, "networks": []}
+    out = run("nmcli", "-t", "-f", "SSID,SIGNAL", "device", "wifi", "list", "--rescan", "auto", timeout=20).stdout
+    seen = {}
+    for line in out.splitlines():
+        name = line.rsplit(":", 1)[0]
+        try:
+            sig = int(line.rsplit(":", 1)[1])
+        except (ValueError, IndexError):
+            sig = 0
+        if name and (name not in seen or sig > seen[name]):
+            seen[name] = sig
+    return {"result": "ok", "message": "", "networks": [n for n, _ in sorted(seen.items(), key=lambda kv: -kv[1])]}
+
+
 def handle(req):
     op = req.get("op", "check")
     if op == "check":
@@ -441,6 +528,14 @@ def handle(req):
         return venue_leave()
     if op == "boot_reset":
         return boot_reset()
+    if op == "uplink_status":
+        return uplink_status()
+    if op == "uplink_networks":
+        return uplink_networks()
+    if op == "uplink_set":
+        return uplink_set(str(req.get("ssid", "")), str(req.get("password", "")))
+    if op == "uplink_forget":
+        return uplink_forget()
     if op == "pair":
         return pair(str(req.get("setup_ssid", "")), str(req.get("ssid", "")), str(req.get("password", "")),
                     str(req.get("alias", ""))[:kasa.ALIAS_MAX])
