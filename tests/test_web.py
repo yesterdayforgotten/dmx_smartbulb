@@ -461,3 +461,13 @@ def test_recording_is_closed_when_the_engine_stops(tmp_path):
         text = (rec.dir / rec.list()[0]["name"]).read_text()
         assert json.loads(text.splitlines()[-1])["reason"] == "the engine stopped"
     run(go())
+
+
+def test_favicon_is_served(tmp_path):
+    async def go():
+        async with Harness(tmp_path) as h:
+            page = (await h.client.get("/")).text
+            assert 'href="favicon.svg"' in page
+            r = await h.client.get("/favicon.svg")
+            assert r.status_code == 200 and r.headers["content-type"].startswith("image/svg")
+    run(go())
