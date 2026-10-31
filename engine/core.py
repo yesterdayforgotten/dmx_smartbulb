@@ -5,10 +5,12 @@ bulbs again by MAC when their IP changes.
 import asyncio
 import logging
 import time
+from pathlib import Path
 
 from engine import kasa
 from engine.config import FOOTPRINT, group_size
 from engine.receiver import Receiver
+from engine.recorder import Recorder
 from engine.sender import HIST_EDGES_MS, Sender, histogram, percentile
 
 log = logging.getLogger("engine")
@@ -42,6 +44,7 @@ class Engine:
         self.info = {}               # mac -> model, hw_ver, fw, rssi, alias, power_on (not saved)
         from engine.board import Board
         self.board = Board(self.patched_fixtures)
+        self.recorder = Recorder(self, Path(store.path).parent / "recordings")
         self._last_discovery = -REDISCOVER_EVERY_S
         self._last_info_retry = -INFO_RETRY_S
         self._wake = asyncio.Event()
@@ -110,6 +113,8 @@ class Engine:
 
     def stop(self):
         self._stopping = True
+        self.recorder.stop("the engine stopped")
+        self.recorder.join(2.0)
         try:
             self.board.release()
         except Exception:  # noqa: BLE001 - shutting down

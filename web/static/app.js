@@ -29,7 +29,7 @@ function app() {
     cfg: null, warnings: [], overlaps: [], nextFree: null, fwImages: [], settings: null,
     live: null, fps: 0, _frames: null, _framesT: 0, ws: null, _wsRetry: 1000,
     view: 'map', selectMode: false, selected: [], editLayout: false, sheet: null,
-    found: null, discovering: false, pair: null, newGroup: '', lookName: '',
+    found: null, discovering: false, pair: null, recordings: [], newGroup: '', lookName: '',
     info: {}, bulbFilter: '', bulbGroupFilter: '', bulbStatusFilter: '', menuFor: null, menuPos: { x: 0, y: 0 }, groupPopup: null, groupSheet: null,
     dmxPopup: false, assign: null, delayPop: false, bulkGroups: false, confirmDlg: null,
     board: null, boardMode: 'color', boardSel: [], boardColor: { h: 30, s: 80, v: 70 }, boardTemp: 3200,
@@ -137,7 +137,7 @@ function app() {
     async loadState() {
       const s = await this.api('GET', '/api/state');
       this.cfg = s.config; this.warnings = s.warnings; this.nextFree = s.next_free_channel; this.overlaps = s.overlaps || [];
-      this.fwImages = s.firmware_images; this.live = s.live; this.info = s.info || {};
+      this.fwImages = s.firmware_images; this.live = s.live; this.info = s.info || {}; this.recordings = s.recordings || [];
       // The DMX input is set up on the Pi (config file / setup script), not here.
       this.settings = JSON.parse(JSON.stringify({
         sender: s.config.sender, dmx_loss: s.config.dmx_loss, network: s.config.network, identify: s.config.identify,
@@ -166,6 +166,20 @@ function app() {
         setTimeout(() => this.connect(), this._wsRetry);
         this._wsRetry = Math.min(this._wsRetry * 2, 10000);
       };
+    },
+
+    // ---------- test recorder ----------
+    recordingLabel() {
+      const r = this.live && this.live.recording;
+      if (!r || !r.active) return 'Record';
+      const mm = String(Math.floor(r.seconds / 60)).padStart(2, '0'), ss = String(r.seconds % 60).padStart(2, '0');
+      return `Recording ${mm}:${ss} · Stop`;
+    },
+    async toggleRecording() {
+      const active = this.live && this.live.recording.active;
+      const r = await this.act(this.api('POST', `/api/recording/${active ? 'stop' : 'start'}`));
+      if (r) this.say(active ? `Saved ${r.name}` : 'Recording to the SD card');
+      await this.loadState();
     },
 
     // ---------- bulb data ----------

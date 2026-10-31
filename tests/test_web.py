@@ -393,3 +393,71 @@ def test_added_bulbs_default_to_hsic_with_room_for_4_channels(tmp_path):
             assert h.engine.cfg["bulbs"][macs[2]]["channel"] == 6
             assert (await h.client.get("/api/state")).json()["next_free_channel"] == 15
     run(go())
+
+
+def test_recording_saves_status_dmx_and_logs(tmp_path):
+    import logging
+
+    async def go():
+        async with Harness(tmp_path) as h:
+            c = h.client
+            assert (await c.post("/api/recording/start")).status_code == 401
+            await h.login()
+            await c.put("/api/settings", json={"network": {"ssid": "ShowNet", "password": "topsecret9"}})
+            assert (await c.post("/api/recording/start")).status_code == 200
+            live = (await c.get("/api/state")).json()["live"]["recording"]
+            assert live["active"] and live["name"].startswith("recording-")
+            name = live["name"]
+            again = (await c.post("/api/recording/start")).json()["name"]
+            assert again == name                                       # a second click doesn't start another
+            logging.getLogger("engine").warning("a thing to remember")
+            await asyncio.sleep(1.2)
+            assert (await c.post("/api/recording/stop")).json()["name"] == name
+            st = (await c.get("/api/state")).json()
+            assert not st["live"]["recording"]["active"] and st["recordings"][0]["name"] == name
+            r = await c.get(f"/api/recordings/{name}")
+            assert r.status_code == 200 and "topsecret9" not in r.text and "password" not in r.text
+            rows = [json.loads(line) for line in r.text.splitlines()]
+            kinds = {row["type"] for row in rows}
+            assert {"start", "status", "dmx", "log", "stop"} <= kinds and rows[-1]["type"] == "stop"
+            assert len([row for row in rows if row["type"] == "status"]) >= 2
+            assert len([row for row in rows if row["type"] == "dmx"][0]["values"]) == 1024
+            assert any(row.get("msg") == "a thing to remember" for row in rows)
+            assert set(rows[0]["config"]) == {"bulbs", "groups", "sender", "input", "dmx_loss"}
+            assert (await c.get("/api/recordings/..%2Fconfig.json")).status_code == 404
+            assert (await c.get("/api/recordings/config.json")).status_code == 404
+            assert (await c.post("/api/recording/stop")).status_code == 200    # nothing running: harmless
+            c.cookies.clear()
+            assert (await c.get(f"/api/recordings/{name}")).status_code == 401
+    run(go())
+
+
+def test_recording_stops_itself_at_the_size_limit(tmp_path, monkeypatch):
+    from engine import recorder
+    monkeypatch.setattr(recorder, "MAX_BYTES", 10)
+
+    async def go():
+        async with Harness(tmp_path) as h:
+            await h.login()
+            await h.client.post("/api/recording/start")
+            await asyncio.sleep(1.5)
+            st = h.engine.recorder.status()
+            assert not st["active"] and "stopped by itself" in st["error"]
+            h.engine.recorder.join()
+            path = h.engine.recorder.list()[0]
+            text = (h.engine.recorder.dir / path["name"]).read_text()
+            assert json.loads(text.splitlines()[-1])["type"] == "stop"
+    run(go())
+
+
+def test_recording_is_closed_when_the_engine_stops(tmp_path):
+    async def go():
+        async with Harness(tmp_path) as h:
+            await h.login()
+            await h.client.post("/api/recording/start")
+            await asyncio.sleep(0.2)
+            rec = h.engine.recorder
+        assert not rec.active
+        text = (rec.dir / rec.list()[0]["name"]).read_text()
+        assert json.loads(text.splitlines()[-1])["reason"] == "the engine stopped"
+    run(go())

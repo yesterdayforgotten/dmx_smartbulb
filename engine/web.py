@@ -118,7 +118,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
                                                    "latency_p95_ms", "latency_max_ms", "latency_hist", "queued_p95_ms", "mode", "frame_period_ms",
                                                    "delivery_spread_p95_ms", "reply_spread_p95_ms")},
                 "online": st["online"], "bulbs": bulbs, "ip_changes": st["ip_changes"][-5:],
-                "firmware": fw_jobs,
+                "firmware": fw_jobs, "recording": engine.recorder.status(),
                 "board": {"available": engine.board.available(), "active": engine.board.active,
                           "show": engine.board.show, "frames": engine.board.frames, "error": engine.board.error}}
 
@@ -192,7 +192,8 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         need_auth(request)
         return {"config": public_config(engine.cfg), "warnings": patch_conflicts(engine.cfg),
                 "overlaps": sorted(overlapping_bulbs(engine.cfg)),
-                "next_free_channel": next_free_channel(engine.cfg, size=FOOTPRINT[NEW_BULB_MODE]), "live": live_payload(),
+                "next_free_channel": next_free_channel(engine.cfg, size=FOOTPRINT[NEW_BULB_MODE]),
+                "recordings": engine.recorder.list(), "live": live_payload(),
                 "info": engine.info,
                 "firmware_images": firmware.cached(firmware_dir)}
 
@@ -406,6 +407,32 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         if restart:
             engine.restart_receiver()
         return {"ok": True, "input_restarted": restart}
+
+    # ---- test recorder ------------------------------------------------------------
+
+    @app.post("/api/recording/start")
+    async def recording_start(request: Request):
+        need_auth(request)
+        try:
+            return {"name": engine.recorder.start()}
+        except OSError as e:
+            raise HTTPException(500, f"couldn't start recording: {e}")
+
+    @app.post("/api/recording/stop")
+    async def recording_stop(request: Request):
+        need_auth(request)
+        name = engine.recorder.name
+        engine.recorder.stop()
+        await asyncio.to_thread(engine.recorder.join)
+        return {"name": name}
+
+    @app.get("/api/recordings/{name}")
+    def recording_file(name: str, request: Request):
+        need_auth(request)
+        path = engine.recorder.path_of(name)
+        if path is None:
+            raise HTTPException(404, "no such recording")
+        return FileResponse(path, media_type="application/x-ndjson", filename=name)
 
     @app.get("/api/backup")
     def backup(request: Request):

@@ -65,6 +65,10 @@
         </span>
         <span class="pill" x-show="live && live.sender.delivery_spread_p95_ms != null" title="How far apart bulbs receive the same DMX change (95th percentile)"
               x-text="'spread ' + (live ? live.sender.delivery_spread_p95_ms : '') + ' ms'"></span>
+        <button type="button" class="pill pill-btn" :class="live && live.recording.active && 'bad'" x-show="live" @click="toggleRecording()"
+                :title="live && live.recording.active ? 'Saving to the SD card. Click to stop.' : 'Save logs and status to the SD card until clicked again'">
+          <span class="dot"></span><span x-text="recordingLabel()"></span></button>
+        <span class="pill bad" x-show="live && live.recording.error" x-text="live ? 'Recording ' + live.recording.error : ''"></span>
         <span class="pill bad" x-show="live && (live.input.malformed || live.input.oe || live.input.restarts)"><span class="dot"></span>
           <span x-text="inputProblems()"></span></span>
       </div>
@@ -515,6 +519,19 @@
         <div class="row"><button class="btn primary" type="submit" :disabled="wifiChecking"
                                  x-text="wifiChecking ? 'Checking the WiFi password…' : 'Save settings'"></button></div>
       </form>
+
+      <h2>Test recordings</h2>
+      <section class="card stack">
+        <p class="muted small" style="margin:0">The <strong>Record</strong> button at the top saves logs, bulb status and incoming DMX to the SD card until you click it again.
+          A reboot or power cut ends a recording but keeps what was saved. Without internet the times in the names can be wrong: the Pi has no battery clock.</p>
+        <p class="muted small" style="margin:0" x-show="!recordings.length">No recordings yet.</p>
+        <template x-for="r in recordings" :key="r.name">
+          <div class="row"><span class="mono small" x-text="r.name"></span>
+            <span class="muted small" x-text="r.active ? 'recording…' : (r.bytes / 1e6).toFixed(1) + ' MB'"></span>
+            <span style="flex:1"></span>
+            <a class="btn small" x-show="!r.active" :href="'/api/recordings/' + r.name" :download="r.name">Download</a></div>
+        </template>
+      </section>
 
       <h2>Backup</h2>
       <section class="card row">

@@ -376,6 +376,16 @@ add them later with **Find bulbs**.
 cd /dmx_smartbulb && git pull && sudo ./setup.sh
 ```
 
+### Test recordings
+
+The **Record** button at the top of every tab saves logs, bulb status (every second) and
+incoming DMX to the SD card until you click it again. Recordings are in
+`/var/lib/dmx_smartbulb/recordings/`, one JSON object per line, and can be downloaded from
+**Setup → Test recordings**. A reboot or power cut ends a recording and keeps what was saved,
+minus at most the last 5 seconds. Each one stops itself at 2 GB. There's no delete button:
+remove old ones with `sudo rm`. The SD card isn't quiet while recording. Break and MAB timing
+aren't captured; that needs `tools/dmx_rx_probe.py --record` with the service stopped.
+
 ### Logs
 
 ```bash
