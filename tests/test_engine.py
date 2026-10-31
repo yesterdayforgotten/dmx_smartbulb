@@ -148,6 +148,33 @@ def test_bulb_info_and_power_on_are_read(tmp_path):
     asyncio.run(go())
 
 
+def test_info_is_read_when_a_bulb_comes_back(tmp_path):
+    """A bulb unreachable at start-up gets its firmware and power-on default once it
+    answers, without waiting for the 10-minute refresh, and without hammering it."""
+    async def go():
+        fleet = await FakeBulbFleet(2, port=PORT).start()
+        try:
+            engine = make_engine(tmp_path, fleet, recording(tmp_path))
+            await engine.start()
+            mac = fleet.bulbs[0].mac
+            engine.info.clear()
+            now = time.monotonic()
+            for rt in engine.sender.bulbs.values():
+                rt.last_reply = None
+            await engine._fill_missing_info(now)                      # nothing online: nothing to do
+            assert engine.info == {}
+            engine.sender.bulbs[mac].last_reply = now
+            await engine._fill_missing_info(now)
+            assert engine.info[mac]["fw"] and engine.info[mac]["power_on"]
+            del engine.info[mac]["power_on"]
+            await engine._fill_missing_info(now + 1)                  # too soon to retry
+            assert "power_on" not in engine.info[mac]
+            engine.stop()
+        finally:
+            fleet.stop()
+    asyncio.run(go())
+
+
 def test_power_draw_color_and_last_state_power_on(tmp_path):
     async def go():
         fleet = await FakeBulbFleet(2, port=PORT).start()

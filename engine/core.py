@@ -18,6 +18,7 @@ TICK_S = 0.01                # tick at least this often without new frames
 REDISCOVER_AFTER_S = 10.0    # a bulb offline this long triggers rediscovery
 REDISCOVER_EVERY_S = 30.0    # at most this often
 INFO_EVERY_S = 600.0         # refresh firmware/model/signal and power-on defaults this often
+INFO_RETRY_S = 15.0          # how often to try again for a bulb that answers but has no info yet
 
 
 class Engine:
@@ -42,6 +43,7 @@ class Engine:
         from engine.board import Board
         self.board = Board(self.patched_fixtures)
         self._last_discovery = -REDISCOVER_EVERY_S
+        self._last_info_retry = -INFO_RETRY_S
         self._wake = asyncio.Event()
         self._stopping = False
 
@@ -170,6 +172,7 @@ class Engine:
             self.receiver.check()
             now = time.monotonic()
             self._poll_quiet_bulbs(now)
+            await self._fill_missing_info(now)
             offline = [rt for rt in self.sender.bulbs.values()
                        if rt.ip and rt.sends and not rt.online(now, self.sender.offline_after)
                        and (rt.last_reply is None or now - rt.last_reply > REDISCOVER_AFTER_S)]
@@ -189,6 +192,20 @@ class Engine:
                 log.info("frames %d, sent %d, online %d/%d, latency p95 %s ms",
                          st["input"]["frames"], st["sender"]["sent"], st["online"], len(self.cfg["bulbs"]),
                          st["sender"]["latency_p95_ms"])
+
+    async def _fill_missing_info(self, now):
+        """A bulb that was unreachable at start-up has no firmware or power-on default
+        until the next 10-minute refresh; read them as soon as it answers."""
+        missing = [mac for mac, rt in self.sender.bulbs.items() if rt.online(now, self.sender.offline_after)
+                   and not (self.info.get(mac, {}).get("fw") and self.info.get(mac, {}).get("power_on"))]
+        if not missing or now - self._last_info_retry < INFO_RETRY_S:
+            return
+        self._last_info_retry = now
+        try:
+            await self.rediscover()
+            await self.read_power_on(missing)
+        except OSError as e:
+            log.warning("info read failed: %s", e)
 
     def _poll_quiet_bulbs(self, now):
         """Ask bulbs that haven't been heard from lately for their light state,
