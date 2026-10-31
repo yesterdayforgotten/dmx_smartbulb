@@ -638,8 +638,15 @@
     <div class="backdrop" @click.self="!progress.running && (progress = null)">
       <div class="sheet stack" role="dialog" aria-modal="true" :aria-label="progress.title">
         <strong x-text="progress.title"></strong>
-        <div class="progress" role="progressbar" :aria-valuenow="progress.done" :aria-valuemax="progress.total"><div :style="`width:${progress.total ? 100 * progress.done / progress.total : 100}%`"></div></div>
-        <div class="muted small" x-text="progress.running ? `${progress.done} of ${progress.total} done` + (progress.active.length ? ` · ${bulkNames(progress.active)}` : '') : `Finished: ${progress.done - progress.failed.length - progress.skipped.length} of ${progress.total} confirmed` + (progress.done < progress.total ? ` (stopped, ${progress.total - progress.done} not done)` : '')"></div>
+        <div class="progress" role="progressbar" :aria-valuenow="progress.done" :aria-valuemax="progress.total"><div :style="`width:${bulkPercent()}%`"></div></div>
+        <div class="muted small" x-text="progress.running ? `${progress.done} of ${progress.total} done` : `Finished: ${progress.done - progress.failed.length - progress.skipped.length} of ${progress.total} confirmed` + (progress.done < progress.total ? ` (stopped, ${progress.total - progress.done} not done)` : '')"></div>
+        <template x-for="mac in progress.active" :key="mac">
+          <div class="small" style="display:grid; grid-template-columns:minmax(90px,auto) 1fr; gap:2px 10px; align-items:center">
+            <span x-text="bulkNames([mac])"></span>
+            <span class="muted" x-text="(progress.stages[mac] || {}).text || 'Working…'"></span>
+            <div class="progress" style="grid-column:1 / -1"><div :style="`width:${100 * ((progress.stages[mac] || {}).fraction || 0)}%`"></div></div>
+          </div>
+        </template>
         <div class="muted small" x-show="progress.running && progress.stop && progress.finishesInFlight">Letting the bulbs already updating finish. Don't cut their power.</div>
         <div class="error-text small" x-show="progress.failed.length" x-text="`Didn't confirm: ${bulkNames(progress.failed)}`"></div>
         <div class="warn-text small" x-show="progress.skipped.length" x-text="`Skipped, offline: ${bulkNames(progress.skipped)}`"></div>

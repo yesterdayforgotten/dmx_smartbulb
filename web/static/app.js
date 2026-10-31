@@ -736,7 +736,7 @@ function app() {
       const ctl = new AbortController();
       const queue = [...macs];
       this.progress = { title, total: macs.length, done: 0, failed: [], skipped: [], active: [], running: true,
-        stop: false, finishesInFlight, canRetry: false };
+        stop: false, finishesInFlight, canRetry: false, stages: {} };
       this._bulkAbort = () => { if (!finishesInFlight) ctl.abort(); };
       const run = this.progress;                // Alpine's reactive copy: changes to it update the popup
       const worker = async () => {
@@ -745,8 +745,10 @@ function app() {
           if (!this.isOnline(mac)) { run.skipped.push(mac); run.done += 1; continue; }
           run.active.push(mac);
           let ok = false, cancelled = false;
-          try { ok = await one(mac, ctl.signal); } catch (e) { cancelled = e.name === 'AbortError'; }
+          const report = (text, fraction) => { run.stages[mac] = { text, fraction }; };
+          try { ok = await one(mac, ctl.signal, report); } catch (e) { cancelled = e.name === 'AbortError'; }
           run.active = run.active.filter((m) => m !== mac);
+          delete run.stages[mac];
           if (cancelled) return;
           if (!ok) run.failed.push(mac);
           run.done += 1;
@@ -761,6 +763,13 @@ function app() {
       run.canRetry = again.length > 0;
       await this.loadState();                   // the Pi read the new values back
     },
+    bulkPercent() {
+      // Finished bulbs, plus how far along the ones in progress are.
+      const p = this.progress;
+      if (!p.total) return 100;
+      const partial = Object.values(p.stages).reduce((sum, st) => sum + st.fraction, 0);
+      return Math.min(100, 100 * (p.done + partial) / p.total);
+    },
     stopBulk() { this.progress.stop = true; this._bulkAbort(); },
     updatableSelected() { return this.selected.filter((m) => this.fwUpdatable(m)); },
     async updateFirmwareSelected() {
@@ -770,22 +779,33 @@ function app() {
         body: 'Each bulb downloads the update from this Pi, restarts and is dark for about a minute, up to 4 at a time. Don\'t cut their power or reboot the Pi until this finishes. Trying 2 bulbs first is the safe way to start.',
         ok: 'Update firmware' });
       if (!yes) return;
-      await this.runBulk('Updating firmware', macs, (mac) => this.firmwareOne(mac), { parallel: 4, finishesInFlight: true });
+      await this.runBulk('Updating firmware', macs, (mac, signal, report) => this.firmwareOne(mac, report), { parallel: 4, finishesInFlight: true });
     },
-    async firmwareOne(mac) {
+    async firmwareOne(mac, report) {
       // True once the bulb reports the new version. The update runs on the Pi; its state comes over the live feed.
       const inf = this.info[mac] || {};
       const img = this.fwImages.find((i) => i.model === inf.model && i.hw_ver === inf.hw_ver);
       if (!img) return false;
       const want = img.version.split(' ')[0];
+      report('Starting', 0);
       try { await this.api('POST', `/api/bulbs/${mac}/firmware`, {}); }
       catch (e) { return e.message.startsWith('already up to date'); }
       const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       await sleep(3000);                        // the feed may still show an earlier job until now
-      for (const end = Date.now() + 5 * 60 * 1000; Date.now() < end; await sleep(2000)) {
+      // Downloading fills the first half of this bulb's share. Flashing reports nothing,
+      // so the rest is a time estimate that holds short of full until the bulb is back.
+      let flashingSince = null;
+      for (const end = Date.now() + 5 * 60 * 1000; Date.now() < end; await sleep(1000)) {
         const job = this.fwJob(mac);
         if (job && job.state === 'done') return (job.version || '').split(' ')[0] === want;
         if (job && job.state === 'failed') return false;
+        const ratio = job && job.state === 'running' ? job.ratio || 0 : 0;
+        if (ratio < 100) {
+          report(`Downloading ${ratio}%`, ratio / 200);
+        } else {
+          flashingSince = flashingSince || Date.now();
+          report('Flashing and restarting: the bulb goes dark', 0.5 + Math.min(0.45, (Date.now() - flashingSince) / 60000 * 0.45));
+        }
       }
       return false;
     },
