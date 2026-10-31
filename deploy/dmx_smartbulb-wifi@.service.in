@@ -1,6 +1,7 @@
 # Installed by `python -m engine setup`; @REPO@ is filled in. One instance per
 # connection to dmx_smartbulb-wifi.socket. Root, because it switches the radio on
-# and off (rfkill) and runs wpa_supplicant; standard library only (system python3).
+# and off (rfkill) and runs wpa_supplicant. Uses only engine/kasa.py and the standard
+# library, so it runs with the system python3.
 [Unit]
 Description=DMX Smart Bulbs WiFi check
 

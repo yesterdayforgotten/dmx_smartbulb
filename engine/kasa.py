@@ -102,6 +102,13 @@ def set_alias(name):
     return {"system": {"set_dev_alias": {"alias": name[:ALIAS_MAX]}}}
 # Light state only: a ~160-byte reply instead of get_sysinfo's ~1 KB. Used to
 # check quiet bulbs are still online without wasting airtime.
+def join_wifi(ssid, password):
+    """Onboarding: tell a bulb on its setup network which WiFi to join. key_type 3 is
+    WPA2 and 0 is an open network."""
+    return {"smartlife.iot.common.softaponboarding": {"set_stainfo": {
+        "ssid": ssid, "password": password, "key_type": 3 if password else 0}}}
+
+
 LIGHT_STATE = {LIGHTING: {"get_light_state": {}}}
 DEFAULT_BEHAVIOR = {LIGHTING: {"get_default_behavior": {}}}
 # Several methods ride in one datagram and are all answered in one reply, so

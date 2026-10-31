@@ -3,8 +3,12 @@
 import asyncio
 import json
 import os
+import socket
+import threading
 
-from engine import wifi, wifi_helper
+import pytest
+
+from engine import kasa, wifi, wifi_helper
 
 SCAN = """BSS 48:5b:39:e7:f3:32(on wlan0)
 \tfreq: 2462
@@ -64,3 +68,76 @@ def test_handshake_waits_for_slow_wpa_supplicant_output(tmp_path, monkeypatch):
     monkeypatch.setattr(wifi_helper, "CONF", str(tmp_path / "wifi.conf"))
     assert wifi_helper.handshake("PHDMXLTS", "hunter22") == "wrong_password"
     assert not (tmp_path / "wifi.conf").exists()
+
+
+def test_setup_networks_are_recognized():
+    for name in ("TP-LINK_Smart Bulb_A86D", "Kasa Smart Bulb 7B"):
+        assert wifi_helper.SETUP_SSID.match(name)
+    assert not wifi_helper.SETUP_SSID.match("PHDMXLTS")
+    assert wifi_helper.pair("PHDMXLTS", "Show", "hunter22")["result"] == "invalid"
+    assert wifi_helper.pair("TP-LINK_Smart Bulb_A86D", "", "hunter22")["result"] == "invalid"
+    assert wifi_helper.pair("TP-LINK_Smart Bulb_A86D", "Show", "short")["result"] == "invalid"
+
+
+class SetupBulb(threading.Thread):
+    """A bulb on its setup network; goes silent after the WiFi settings, as a real one may."""
+
+    def __init__(self, sysinfo, silent_after_join=True, join_reply=None):
+        super().__init__(daemon=True)
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.bind(("127.0.0.1", 0))
+        self.sock.settimeout(3)
+        self.addr = self.sock.getsockname()
+        self.sysinfo, self.silent, self.join_reply = sysinfo, silent_after_join, join_reply
+        self.seen = []
+
+    def run(self):
+        try:
+            while True:
+                data, addr = self.sock.recvfrom(4096)
+                cmd = kasa.unpack(data)
+                self.seen.append(cmd)
+                if "system" in cmd:
+                    self.sock.sendto(kasa.pack({"system": {"get_sysinfo": self.sysinfo}}), addr)
+                elif "smartlife.iot.common.softaponboarding" in cmd:
+                    if not self.silent:
+                        self.sock.sendto(kasa.pack({"smartlife.iot.common.softaponboarding": {"set_stainfo": self.join_reply}}), addr)
+                else:
+                    self.sock.sendto(kasa.pack({"ok": 1}), addr)
+        except OSError:
+            pass
+
+
+BULB = {"mic_type": "IOT.SMARTBULB", "model": "KL135(US)", "sw_ver": "1.0.15", "mic_mac": "5091E39BA86D"}
+
+
+def client():
+    return socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+
+def test_onboard_names_the_bulb_and_sends_the_network():
+    bulb = SetupBulb(BULB)
+    bulb.start()
+    with client() as sock:
+        got = wifi_helper.onboard(sock, bulb.addr, "PHDMXLTS", "hunter22", "Stage left")
+    assert got == {"mac": kasa.sysinfo_mac(BULB), "model": "KL135(US)", "fw": "1.0.15"}
+    join = [c for c in bulb.seen if "smartlife.iot.common.softaponboarding" in c][0]
+    assert join["smartlife.iot.common.softaponboarding"]["set_stainfo"] == {
+        "ssid": "PHDMXLTS", "password": "hunter22", "key_type": 3}
+    assert any("Stage left" in json.dumps(c) for c in bulb.seen)
+
+
+def test_onboard_refuses_other_devices_and_reports_a_refusal():
+    bulb = SetupBulb({"mic_type": "IOT.SMARTPLUGSWITCH", "model": "HS100"})
+    bulb.start()
+    with client() as sock, pytest.raises(RuntimeError, match="isn't a supported"):
+        wifi_helper.onboard(sock, bulb.addr, "Show", "hunter22")
+    assert not any("smartlife.iot.common.softaponboarding" in c for c in bulb.seen)
+    bulb = SetupBulb(BULB, silent_after_join=False, join_reply={"err_code": -3, "err_msg": "bad"})
+    bulb.start()
+    with client() as sock, pytest.raises(RuntimeError, match="refused"):
+        wifi_helper.onboard(sock, bulb.addr, "Show", "hunter22")
+
+
+def test_onboard_open_network_uses_key_type_0():
+    assert kasa.join_wifi("Open", "")["smartlife.iot.common.softaponboarding"]["set_stainfo"]["key_type"] == 0
