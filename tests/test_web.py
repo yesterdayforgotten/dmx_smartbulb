@@ -467,7 +467,7 @@ def test_favicon_is_served(tmp_path):
     async def go():
         async with Harness(tmp_path) as h:
             page = (await h.client.get("/")).text
-            assert 'href="favicon.svg"' in page
-            r = await h.client.get("/favicon.svg")
-            assert r.status_code == 200 and r.headers["content-type"].startswith("image/svg")
+            assert 'href="favicon.png"' in page
+            r = await h.client.get("/favicon.png")
+            assert r.status_code == 200 and r.headers["content-type"] == "image/png"
     run(go())
