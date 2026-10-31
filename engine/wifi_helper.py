@@ -190,8 +190,9 @@ def venue_cleanup():
 
 
 def venue_join(ssid, password):
-    """Setup keeps NetworkManager off wlan0 with a file in /etc that `nmcli device set`
-    can't override, so a later file in /run lifts it, and the profile lives in /run too.
+    """Setup keeps NetworkManager off wlan0 with a file in /usr/lib that `nmcli device set`
+    can't override. /run is read after it, so a file there lifts it (one in /etc would win
+    over /run), and the profile lives in /run too.
     A reboot clears both, and boot_reset() switches the radio back off."""
     if not ssid:
         return {"result": "invalid", "message": "Enter the network name."}

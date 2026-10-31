@@ -44,7 +44,10 @@ JOURNALD = Path("/etc/systemd/journald.conf.d/dmx_smartbulb.conf")
 TMP_MOUNT = Path("/etc/systemd/system/tmp.mount")
 WIFI_SOCKET = Path("/etc/systemd/system/dmx_smartbulb-wifi.socket")
 WIFI_SERVICE = Path("/etc/systemd/system/dmx_smartbulb-wifi@.service")
-NM_CONF = Path("/etc/NetworkManager/conf.d/90-dmx_smartbulb.conf")
+# In /usr/lib, not /etc: NetworkManager reads /run after /usr/lib but before /etc, and venue
+# WiFi lifts this rule with a file in /run (see venue_join() in engine/wifi_helper.py).
+NM_CONF = Path("/usr/lib/NetworkManager/conf.d/90-dmx_smartbulb.conf")
+NM_CONF_OLD = Path("/etc/NetworkManager/conf.d/90-dmx_smartbulb.conf")
 BEGIN, END = "# BEGIN dmx_smartbulb", "# END dmx_smartbulb"
 SUPPORTED_OS = ("bookworm", "trixie")
 QUIET_SERVICES = ("ModemManager", "bluetooth", "hciuart", "triggerhappy")
@@ -265,7 +268,7 @@ def step_wifi():
         return Step("wifi", [])
     todo = []
     nm_src = (REPO / "deploy" / "networkmanager.conf").read_text()
-    if NM_CONF.parent.is_dir() and (not NM_CONF.exists() or NM_CONF.read_text() != nm_src):
+    if NM_CONF.parent.is_dir() and (not NM_CONF.exists() or NM_CONF.read_text() != nm_src or NM_CONF_OLD.exists()):
         todo.append("keep NetworkManager off wlan0")
     if (not WIFI_SOCKET.exists() or WIFI_SOCKET.read_text() != (REPO / "deploy" / WIFI_SOCKET.name).read_text()
             or not WIFI_SERVICE.exists() or WIFI_SERVICE.read_text() != unit_text(WIFI_SERVICE.name + ".in")):
@@ -279,6 +282,7 @@ def step_wifi():
     def apply():
         if NM_CONF.parent.is_dir():
             NM_CONF.write_text(nm_src)
+            NM_CONF_OLD.unlink(missing_ok=True)
             sh("systemctl", "reload", "NetworkManager", check=False)
         WIFI_SOCKET.write_text((REPO / "deploy" / WIFI_SOCKET.name).read_text())
         WIFI_SERVICE.write_text(unit_text(WIFI_SERVICE.name + ".in"))
