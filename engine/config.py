@@ -58,7 +58,7 @@ DEFAULTS = {
     },
     "dmx_loss": {"mode": "hold", "after_s": 5.0, "look": None},
     "identify": {"blink_hz": 2.0, "duration_s": 4.0},
-    "ui": {"title": "DMX Smart Bulbs"},
+    "ui": {"title": "DMX Smart Bulb Control Panel"},
     "network": {"ssid": "", "password": ""},
     "auth": {"password_hash": None, "session_secret": None},
     "kasa_port": 9999,

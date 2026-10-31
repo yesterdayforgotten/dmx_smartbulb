@@ -56,7 +56,7 @@ def test_first_run_setup_then_login(tmp_path):
     async def go():
         async with Harness(tmp_path) as h:
             c = h.client
-            assert (await c.get("/api/session")).json() == {"setup_needed": True, "authenticated": False, "title": "DMX Smart Bulbs"}
+            assert (await c.get("/api/session")).json() == {"setup_needed": True, "authenticated": False, "title": "DMX Smart Bulb Control Panel"}
             assert (await c.get("/api/state")).status_code == 401
             assert (await c.post("/api/setup", json={"password": "abc"})).status_code == 400   # too short
             r = await c.post("/api/setup", json={"password": "secret123", "ssid": "ShowNet", "wifi_password": "pw"})

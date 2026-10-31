@@ -56,7 +56,7 @@ function app() {
       document.title = this.pageTitle();
     },
     pageTitle() {
-      return (this.cfg && this.cfg.ui && this.cfg.ui.title) || this.session.title || 'DMX Smart Bulbs';
+      return (this.cfg && this.cfg.ui && this.cfg.ui.title) || this.session.title || 'DMX Smart Bulb Control Panel';
     },
     async start() {
       await this.loadState();
