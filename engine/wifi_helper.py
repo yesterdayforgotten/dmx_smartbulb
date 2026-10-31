@@ -155,11 +155,15 @@ def wifi_profiles():
 def venue_status():
     addrs = addresses()
     connected = IFACE in addrs
-    ssid = run("nmcli", "-g", "GENERAL.CONNECTION", "device", "show", IFACE).stdout.strip() if connected else ""
+    profile = run("nmcli", "-g", "GENERAL.CONNECTION", "device", "show", IFACE).stdout.strip() if connected else ""
+    # Our temporary profile has a fixed id, so ask it for the network's real name.
+    ssid = profile
+    if profile == VENUE_ID:
+        ssid = run("nmcli", "-g", "802-11-wireless.ssid", "connection", "show", "id", VENUE_ID).stdout.strip() or profile
     saved = [n for n in wifi_profiles() if n != VENUE_ID]
     message = f"Connected to {ssid}." if connected else "Not connected."
     reply = {"result": "ok", "message": message, "connected": connected, "ssid": ssid, "ip": addrs.get(IFACE, ""),
-             "temporary": ssid == VENUE_ID, "saved": saved, "internet": ""}
+             "temporary": profile == VENUE_ID, "saved": saved, "internet": ""}
     if connected:
         reply["internet"] = run("nmcli", "networking", "connectivity", "check", timeout=20).stdout.strip()
     return reply

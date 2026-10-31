@@ -159,6 +159,8 @@ class FakeRun:
             out = self.addrs
         elif "connection" in cmd and "up" in cmd and self.up_fails:
             rc = 1
+        elif "802-11-wireless.ssid" in cmd:
+            out = "Cafe Net\n"
         elif "connection" in cmd and "show" in cmd:
             out = "Wired:802-3-ethernet\n"
         elif "GENERAL.CONNECTION" in cmd:
@@ -183,6 +185,7 @@ def test_venue_join_keeps_the_password_off_command_lines_and_in_run_only(venue, 
     monkeypatch.setattr(wifi_helper, "run", fake)
     r = wifi_helper.venue_join("Cafe Net", "hunter22")
     assert r["connected"] and r["ip"] == "172.22.33.5/20" and r["internet"] == "full" and r["temporary"]
+    assert r["ssid"] == "Cafe Net"
     assert not any("hunter22" in " ".join(c) for c in fake.cmds)
     profile = wifi_helper.VENUE_PROFILE
     assert oct(profile.stat().st_mode)[-3:] == "600" and "psk=hunter22" in profile.read_text()

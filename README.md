@@ -329,7 +329,7 @@ Only WPA2 (and WPA2/WPA3 mixed) networks can be checked; the result is logged wi
 bulbs still on Ethernet. WiFi's default route wins, and bulb traffic stays on Ethernet because
 it's on its own subnet. The profile is kept in `/run`, with no password in the config, so a
 reboot or **Turn off** puts everything back. While connected, the Pi can't pair bulbs or check
-the show network's password, and setup leaves WiFi alone. WPA password networks only.
+the show network's password, and setup leaves WiFi alone. WPA password or open networks only.
 
 ### Pairing new bulbs
 

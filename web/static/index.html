@@ -525,10 +525,10 @@
         <summary><strong>Venue WiFi (temporary)</strong></summary>
         <div class="stack" style="margin-top:10px">
           <p class="muted small" style="margin:0">Gives the Pi internet through the venue's WiFi, for updates or remote help. The bulbs stay on Ethernet. A reboot or <strong>Turn off</strong> puts everything back,
-            and the password isn't saved. WPA password networks only: no sign-in pages or username logins.</p>
+            and the password isn't saved. WPA password or open networks only: no sign-in pages or username logins.</p>
           <template x-if="venue.status && venue.status.connected">
             <div class="stack">
-              <div class="row"><span class="pill ok"><span class="dot"></span><span x-text="'Connected' + (venue.status.temporary ? '' : ' to ' + venue.status.ssid)"></span></span>
+              <div class="row"><span class="pill ok"><span class="dot"></span><span x-text="'Connected to ' + venue.status.ssid"></span></span>
                 <span class="mono small" x-text="venue.status.ip"></span><span class="muted small" x-text="venueInternetText()"></span>
                 <span style="flex:1"></span><button class="btn small danger" type="button" :disabled="!!venue.busy" @click="venueLeave()">Turn off…</button></div>
               <p class="muted small" style="margin:0">While connected, the Pi can't pair bulbs or check the show network's password. Other people on this WiFi can reach this page's login, so turn it off when you're done.</p>
