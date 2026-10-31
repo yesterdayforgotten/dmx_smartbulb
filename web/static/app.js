@@ -776,7 +776,7 @@ function app() {
       const macs = this.updatableSelected();
       if (!macs.length) { this.say('None of the selected bulbs has an update available'); return; }
       const yes = await this.askConfirm({ title: `Update firmware on ${macs.length} bulb(s)?`,
-        body: 'Each bulb downloads the update from this Pi, restarts and is dark for about a minute, up to 4 at a time. Don\'t cut their power or reboot the Pi until this finishes. Trying 2 bulbs first is the safe way to start.',
+        body: 'Each bulb downloads the update from this Pi, and restarts, up to 4 at a time. It may keep its light on while it does. Don\'t cut their power or reboot the Pi until this finishes. Trying 2 bulbs first is the safe way to start.',
         ok: 'Update firmware' });
       if (!yes) return;
       await this.runBulk('Updating firmware', macs, (mac, signal, report) => this.firmwareOne(mac, report), { parallel: 4, finishesInFlight: true });
@@ -804,7 +804,7 @@ function app() {
           report(`Downloading ${ratio}%`, ratio / 200);
         } else {
           flashingSince = flashingSince || Date.now();
-          report('Flashing and restarting: the bulb goes dark', 0.5 + Math.min(0.45, (Date.now() - flashingSince) / 60000 * 0.45));
+          report('Flashing and restarting', 0.5 + Math.min(0.45, (Date.now() - flashingSince) / 60000 * 0.45));
         }
       }
       return false;
@@ -817,7 +817,7 @@ function app() {
       const yes = await this.askConfirm({
         title: `Update ${b.name || mac}?`,
         body: `Firmware ${(inf.fw || '?').split(' ')[0]} → ${img ? img.version.split(' ')[0] : 'latest'}. `
-          + 'The bulb downloads the update from this Pi, restarts and is dark for about a minute. Don\'t switch its power off meanwhile.',
+          + 'The bulb downloads the update from this Pi and restarts, which takes a minute or two. It may keep its light on meanwhile. Don\'t switch its power off meanwhile.',
         ok: 'Update firmware',
       });
       if (!yes) return;

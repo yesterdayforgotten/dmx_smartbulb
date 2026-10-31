@@ -579,7 +579,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         need_auth(request)
         bulb_or_404(mac)
         if engine.dmx_present(time.monotonic()) and not body.get("force"):
-            raise HTTPException(409, "DMX is live; updating would black out this bulb mid-show")
+            raise HTTPException(409, "DMX is live; updating would interrupt this bulb mid-show")
         if fw_jobs.get(mac, {}).get("state") == "running":
             raise HTTPException(409, "already updating this bulb")
         info = await engine.bulb_info(mac)
