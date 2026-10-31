@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 
 import httpx
 import pytest
@@ -527,4 +528,40 @@ def test_auto_assign_follows_the_order_it_is_given(tmp_path):
             r = await h.client.post("/api/bulbs/auto-assign", json={"macs": macs[::-1], "start": 100})
             assert r.status_code == 200
             assert [h.engine.cfg["bulbs"][m]["channel"] for m in macs[::-1]] == [100, 103, 106]
+    run(go())
+
+
+def test_board_works_without_an_enttec_until_a_console_sends_dmx(tmp_path, monkeypatch):
+    from engine import board
+    monkeypatch.setattr(board, "find_enttec", lambda: None)
+
+    async def go():
+        async with Harness(tmp_path) as h:
+            await h.login()
+            c, eng = h.client, h.engine
+            mac = list(eng.cfg["bulbs"])[0]
+            await asyncio.sleep(0.3)
+            assert eng.dmx_present(time.monotonic())                     # the replay is sending
+            r = await c.post("/api/board/color", json={"channels": [1], "h": 120, "s": 100, "v": 100})
+            assert r.status_code == 409 and "console" in r.json()["detail"]
+            assert (await c.get("/api/board")).json()["blocked"] is True
+
+            # The console goes quiet: no new frames, and it's no longer detected.
+            real = eng.receiver.snapshot
+            frozen = real()
+            monkeypatch.setattr(eng.receiver, "snapshot", lambda: frozen)
+            eng.last_seq = frozen[0]
+            eng.last_frame = None
+            r = await c.post("/api/board/color", json={"channels": [1], "h": 120, "s": 100, "v": 100})
+            assert r.status_code == 200
+            st = (await c.get("/api/board")).json()
+            assert st["direct"] and st["active"] and not st["blocked"]
+            await asyncio.sleep(0.2)
+            assert eng.sender.bulbs[mac].target[0] == "hsv" and eng.sender.bulbs[mac].target[1] == 120
+            assert (await c.get("/api/state")).json()["live"]["board"]["direct"] is True
+
+            # A real frame arrives: the console wins at once.
+            monkeypatch.setattr(eng.receiver, "snapshot", lambda: (frozen[0] + 1, time.monotonic(), bytes(512)))
+            await asyncio.sleep(0.2)
+            assert not eng.board.direct and not eng.board.active and eng.dmx_present(time.monotonic())
     run(go())

@@ -340,14 +340,13 @@
     <div x-show="tab === 'board'">
       <div class="row" style="margin-bottom:10px">
         <span class="pill" :class="board && board.active ? 'ok' : ''"><span class="dot"></span>
-          <span x-text="board && board.active ? 'Sending DMX through the Enttec' : 'Not sending (any change starts it)'"></span></span>
+          <span x-text="boardStatusText()"></span></span>
         <span class="muted small" x-show="board && board.error" x-text="board && board.error"></span>
         <span style="flex:1"></span>
         <button class="btn small" type="button" @click="boardBlackout()">Blackout</button>
         <button class="btn small" type="button" @click="boardRelease()" :disabled="!(board && board.active)" title="Stop sending, so a real desk can take over">Release</button>
       </div>
-      <p class="muted" style="margin:0 0 12px">Sends real DMX out of the Enttec, so it travels the whole chain (shield, receiver, engine, bulbs) just like a desk.
-        Bulbs follow it only if their DMX toggle is on; a manual color holds until the DMX changes.</p>
+      <p class="muted" style="margin:0 0 12px">With an Enttec plugged in, this sends real DMX out of it, so it travels the whole chain like a desk (plug its output into the box's DMX In). Without one, it controls the bulbs directly from the Pi, and steps aside as soon as a console sends DMX. Bulbs follow it only if their DMX toggle is on; a manual color holds until the board or a console changes its channels.</p>
 
       <div class="row" style="margin-bottom:12px">
         <button class="btn small" type="button" :aria-pressed="boardMode === 'color'" @click="boardMode = 'color'; $nextTick(() => drawWheel($refs.boardwheel))">Color</button>

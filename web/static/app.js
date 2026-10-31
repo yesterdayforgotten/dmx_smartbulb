@@ -112,8 +112,7 @@ function app() {
       await this.refreshSession();
     },
     visibleTabs() {
-      const enttec = this.live && this.live.board && this.live.board.available;
-      return this.tabs.filter((t) => t.id !== 'board' || enttec || this.tab === 'board');
+      return this.tabs;
     },
     setTab(t) {
       this.tab = t;
@@ -179,6 +178,15 @@ function app() {
         setTimeout(() => this.connect(), this._wsRetry);
         this._wsRetry = Math.min(this._wsRetry * 2, 10000);
       };
+    },
+
+    boardStatusText() {
+      // The live feed, not this.board: sending a value marks this.board active before it knows which way.
+      const b = this.board;
+      const now = this.live && this.live.board;
+      if (now && now.active) return now.direct ? 'Controlling the bulbs directly from the Pi' : 'Sending DMX through the Enttec';
+      if (b && b.blocked) return 'A console is sending DMX, so the Control Board is off';
+      return 'Not sending (any change starts it)';
     },
 
     // ---------- venue WiFi ----------
@@ -280,6 +288,7 @@ function app() {
       if (!this.live) return 'DMX';
       if (!this.live.dmx_enabled) return 'DMX ignored';
       if (this.live.dmx) return 'DMX ' + this.fps + ' fps';
+      if (this.live.board && this.live.board.direct) return 'Control Board';
       return this.live.loss ? 'No DMX (loss action)' : 'No DMX';
     },
     async setDmxEnabled(on) {

@@ -122,7 +122,7 @@ Debug output goes to the ESP32's USB serial port at 115200 baud. Build and flash
 | TP-Link Kasa **KL135** smart bulbs | The only model tested; see [Supported bulbs](#supported-bulbs) |
 | 3D-printed vented enclosure | |
 | Jumper wires | Dupont connectors on the Pi header and the shield |
-| *Optional:* Enttec Open DMX USB | Plugged into the Pi, it enables the **Control Board** tab (test DMX without a console) |
+| *Optional:* Enttec Open DMX USB | Plugged into the Pi, it sends the **Control Board** tab's DMX down the real cable, testing the whole chain without a console |
 | *Legacy:* ESP32 DOIT DevKit V1 (30-pin, ESP32-WROOM-32) and a 3 A 40 V Schottky diode (1N5822) | Only for the old [ESP32 input](#esp32-dmx-receiver-optional-legacy) |
 
 ### Photos
@@ -443,9 +443,11 @@ Browse to `http://<hostname>.local/` and log in. There are four tabs.
 
 ### Control Board
 
-Only shown while an **Enttec Open DMX USB** is plugged into the Pi. It sends real DMX out
-of the Enttec, so it travels the whole chain (shield, receiver, engine, bulbs) just like
-a desk; plug the Enttec's output into the box's DMX In. It has a color picker, per-channel
+Works with or without an Enttec. With no Enttec, it controls the bulbs directly from the Pi,
+but not while a console is sending DMX: the console always wins, and the board steps aside
+as soon as DMX arrives. With an **Enttec Open DMX USB** plugged in, it sends real DMX out of
+the Enttec, so it travels the whole chain (shield, receiver, engine, bulbs) just like a desk;
+plug the Enttec's output into the box's DMX In. It has a color picker, per-channel
 faders, and test shows (rainbow, chases, breathe, snaps, flash) per group, plus Blackout
 and Release. Bulbs follow it only if their DMX toggle is on.
 
@@ -597,7 +599,7 @@ engine/                  The app (python -m engine)
   kasa.py                Kasa UDP protocol
   config.py              config.json: defaults, validation, power-safe saving
   web.py, auth.py        Web UI API and login
-  board.py               Control Board (Enttec Open DMX USB output)
+  board.py               Control Board (direct, or Enttec Open DMX USB output)
   firmware.py            Bulb firmware cache
   setup.py               Pi setup (run through setup.sh)
 web/static/              The web UI (Alpine.js, no build step)

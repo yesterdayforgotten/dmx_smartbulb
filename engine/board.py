@@ -1,8 +1,10 @@
-"""Control Board: sends DMX out through an Enttec Open DMX USB, like a console.
+"""Control Board: the web UI as a console, to set channels, set a color for chosen
+fixtures, or run test shows. The 512 channel values live in `values`.
 
-When an Enttec (FTDI FT232R) is plugged in, the web UI's Control Board tab can
-set channels, set a color for chosen fixtures, or run test shows. The 512
-channel values live in `values`; a background thread sends them as DMX frames
+With no Enttec plugged in it's "direct": the engine reads `values` as if they were
+incoming DMX (see Engine.step), unless a real console is sending, which always wins.
+
+When an Enttec Open DMX USB (FTDI FT232R) is plugged in, a background thread sends them as DMX frames
 (BREAK, MAB, start code 0 and 512 slots at 250 kbaud) back to back, about 25
 times a second. That is the ceiling for full 512-slot frames here: the frame takes
 23 ms on the wire, and the FTDI driver takes 15-28 ms just to start the BREAK.
@@ -48,11 +50,14 @@ def hsv_to_dmx(h, s, v):
 
 
 class Board:
-    def __init__(self, fixtures):
+    def __init__(self, fixtures, dmx_input=lambda: False):
         """fixtures: callable returning [(label, start channel, channels)] for
         patched addresses (solo bulbs and group channels), in channel order.
-        channels is 3 (HSI) or 4 (HSIC) and may be left out (3)."""
+        channels is 3 (HSI) or 4 (HSIC) and may be left out (3).
+        dmx_input: callable, True while DMX is arriving from outside."""
         self.fixtures = fixtures
+        self.dmx_input = dmx_input
+        self.direct = False           # driving the engine from `values`, with no Enttec
         self.values = bytearray(512)
         self.port = None
         self.active = False           # sending frames
@@ -70,12 +75,18 @@ class Board:
         return find_enttec() is not None
 
     def start(self):
-        """Begin sending (idempotent). Raises RuntimeError if no Enttec."""
+        """Begin sending (idempotent), through the Enttec if there is one. Without one,
+        raises RuntimeError while a console is sending DMX."""
         if self.active:
             return
         port = find_enttec()
         if port is None:
-            raise RuntimeError("no Enttec Open DMX USB found")
+            if self.dmx_input():
+                raise RuntimeError("a console is sending DMX, so the Control Board is off")
+            self.port = None
+            self.direct = self.active = True
+            log.info("Control Board driving the bulbs directly (no Enttec)")
+            return
         self.port = port
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, name="board-out", daemon=True)
@@ -89,7 +100,7 @@ class Board:
         self._stop.set()
         if self._thread:
             self._thread.join(2)
-        self.active = False
+        self.direct = self.active = False
 
     def _run(self):
         import serial
@@ -188,6 +199,11 @@ class Board:
             for ch in channels:
                 if 1 <= ch <= 510:
                     self.values[ch - 1:ch + 2] = bytes(trio)
+
+    def frame(self):
+        """The current 512 values, for direct mode."""
+        with self._lock:
+            return bytes(self.values)
 
     def blackout(self):
         self.stop_show()
@@ -322,6 +338,7 @@ class Board:
                  "target": r["target"],
                  "fixtures": len(self._all_channels() if r["channels"] is None else r["channels"])}
                 for r in self.runs.values()]
-        return {"available": self.available(), "active": self.active, "port": self.port, "show": self.show,
+        return {"available": self.available(), "active": self.active, "direct": self.direct, "port": self.port,
+                "blocked": not self.active and not self.available() and self.dmx_input(), "show": self.show,
                 "runs": runs, "frames": self.frames, "error": self.error,
                 "shows": [{"id": k, "label": v} for k, v in SHOWS.items()]}

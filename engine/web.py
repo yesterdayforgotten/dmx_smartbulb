@@ -119,7 +119,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
                                                    "delivery_spread_p95_ms", "reply_spread_p95_ms")},
                 "online": st["online"], "bulbs": bulbs, "ip_changes": st["ip_changes"][-5:],
                 "firmware": fw_jobs, "recording": engine.recorder.status(),
-                "board": {"available": engine.board.available(), "active": engine.board.active,
+                "board": {"available": engine.board.available(), "active": engine.board.active, "direct": engine.board.direct,
                           "show": engine.board.show, "frames": engine.board.frames, "error": engine.board.error}}
 
     # ---- session -----------------------------------------------------------
@@ -485,7 +485,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         engine.refresh_soon()                  # find the restored bulbs and read their power-on defaults
         return {"ok": True, "bulbs": len(engine.cfg["bulbs"])}
 
-    # ---- control board (DMX out through an Enttec) ---------------------------------
+    # ---- control board (through an Enttec, or directly if there isn't one) ----------
 
     @app.get("/api/board")
     async def board_state(request: Request):

@@ -20,6 +20,7 @@ TICK_S = 0.01                # tick at least this often without new frames
 REDISCOVER_AFTER_S = 10.0    # a bulb offline this long triggers rediscovery
 REDISCOVER_EVERY_S = 30.0    # at most this often
 INFO_EVERY_S = 600.0         # refresh firmware/model/signal and power-on defaults this often
+BOARD_FRAME_S = 1 / 30       # how often the Control Board drives the bulbs with no Enttec
 INFO_RETRY_S = 15.0          # how often to try again for a bulb that answers but has no info yet
 
 
@@ -43,7 +44,8 @@ class Engine:
         self.ip_changes = []         # (time, name, old ip, new ip), for the UI
         self.info = {}               # mac -> model, hw_ver, fw, rssi, alias, power_on (not saved)
         from engine.board import Board
-        self.board = Board(self.patched_fixtures)
+        self.board = Board(self.patched_fixtures, lambda: self.dmx_present(time.monotonic()))
+        self._last_board_frame = 0.0
         self.recorder = Recorder(self, Path(store.path).parent / "recordings")
         self._last_discovery = -REDISCOVER_EVERY_S
         self._last_info_retry = -INFO_RETRY_S
@@ -138,6 +140,9 @@ class Engine:
         if seq != self.last_seq:
             self.last_seq = seq
             self.last_frame = t
+            if self.board.direct:
+                log.warning("DMX is arriving from a console; the Control Board has stepped aside")
+                self.board.release()
             if self.recorder.active:
                 self.recorder.on_frame(seq, t, data)
             if self.loss_applied:
@@ -145,7 +150,13 @@ class Engine:
                 self.loss_applied = False
             if self.dmx_enabled:
                 self.sender.update_dmx(data, t, now)
-        if self.dmx_enabled:
+        if self.board.direct:
+            # Control Board with no Enttec: its values take the place of incoming DMX. Not
+            # gated by dmx_enabled, which is about the console: this is someone at the page.
+            if now - self._last_board_frame >= BOARD_FRAME_S:
+                self._last_board_frame = now
+                self.sender.update_dmx(self.board.frame(), now, now)
+        elif self.dmx_enabled:
             self._check_loss(now)
         self.sender.tick(now)
 
