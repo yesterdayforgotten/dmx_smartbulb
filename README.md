@@ -520,8 +520,6 @@ newer firmware that only accept the encrypted KLAP protocol, and Tapo bulbs, won
   not a console replacement.
 - **Logs don't survive a reboot**, by design (they're kept in RAM to spare the SD card).
 
-## Future enhancements
-
 ## Development
 
 ```bash
