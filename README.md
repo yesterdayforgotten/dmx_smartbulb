@@ -318,7 +318,7 @@ The first-run page and **Setup → Show network** keep the name and password of 
 WiFi network the bulbs use (needed later for pairing). When you save a new name or
 password, the Pi checks it: it switches its radio on, looks for the network, and tries
 the WPA handshake, which only succeeds with the right password. It doesn't get an address
-or join the network, and the radio is switched off again afterwards (10–20 s in all).
+or join the network, and the radio is switched off again afterwards (about 5–15 s in all).
 If the network isn't found or the password is rejected, it asks whether to save it anyway.
 Only WPA2 (and WPA2/WPA3 mixed) networks can be checked; the result is logged with
 `journalctl -u 'dmx_smartbulb-wifi@*'`.

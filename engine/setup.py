@@ -386,32 +386,31 @@ def sd_writes(seconds):
 
 
 def health(write_seconds):
-    rows = []
-    rows.append(("UART3 (/dev/ttyAMA3)", Path("/dev/ttyAMA3").exists(), ""))
-    rows.append(("service active", ok(["systemctl", "is-active", "--quiet", "dmx_smartbulb"]), ""))
+    yield "UART3 (/dev/ttyAMA3)", Path("/dev/ttyAMA3").exists(), ""
+    yield "service active", ok(["systemctl", "is-active", "--quiet", "dmx_smartbulb"]), ""
     try:
         with urllib.request.urlopen("http://127.0.0.1/api/session", timeout=3) as r:
             title = json.load(r).get("title", "")
-        rows.append(("web UI answers", True, title))
+        yield "web UI answers", True, title
     except OSError as e:
-        rows.append(("web UI answers", False, str(e)))
+        yield "web UI answers", False, str(e)
     try:
         st = json.loads(Path("/dev/shm/dmx_status.json").read_text())
         frames = st.get("input", {}).get("frames", 0)
-        rows.append(("DMX arriving", bool(st.get("dmx_present")),
-                     f"{frames} frames so far" if frames else "no DMX source connected?"))
-        rows.append(("bulbs online", st.get("online", 0) > 0, f"{st.get('online', 0)}/{len(st.get('bulbs', {}))}"))
+        yield ("DMX arriving", bool(st.get("dmx_present")),
+               f"{frames} frames so far" if frames else "no DMX source connected?")
+        yield "bulbs online", st.get("online", 0) > 0, f"{st.get('online', 0)}/{len(st.get('bulbs', {}))}"
     except (OSError, ValueError):
-        rows.append(("DMX arriving", False, "no status file yet"))
+        yield "DMX arriving", False, "no status file yet"
     blocked = wifi_blocked()
-    rows.append(("WiFi radio off", blocked is not False,
-                 "no radio" if blocked is None else "" if blocked else "re-run setup to switch it off"))
+    yield ("WiFi radio off", blocked is not False,
+           "no radio" if blocked is None else "" if blocked else "re-run setup to switch it off")
     if write_seconds:
+        print(f"  … watching SD card writes for {write_seconds} s (--write-check 0 skips this)", flush=True)
         n = sd_writes(write_seconds)
-        rows.append((f"SD card quiet for {write_seconds} s", n == 0,
-                     f"{n * 512 // 1024} KB written" + ("" if n == 0 else
-                     " (an SSH session, git or an editor counts too)")))
-    return rows
+        yield (f"SD card quiet for {write_seconds} s", n == 0,
+               f"{n * 512 // 1024} KB written" + ("" if n == 0 else
+               " (an SSH session, git or an editor counts too)"))
 
 
 # ---- main -----------------------------------------------------------------------------
@@ -458,7 +457,7 @@ def main(argv=None):
     if args.check:
         print("\nHealth:")
         for name, good, note in health(args.write_check):
-            print(f"  {'✓' if good else '✗'} {name}" + (f"  ({note})" if note else ""))
+            print(f"  {'✓' if good else '✗'} {name}" + (f"  ({note})" if note else ""), flush=True)
         return 0
 
     if pending:

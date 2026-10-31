@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 
 from engine import wifi, wifi_helper
 
@@ -52,3 +53,14 @@ def test_client_talks_to_the_helper_socket(tmp_path):
 def test_client_without_helper_says_unavailable(tmp_path):
     r = asyncio.run(wifi.check("X", "12345678", path=str(tmp_path / "missing.sock")))
     assert r["result"] == "unavailable"
+
+
+def test_handshake_waits_for_slow_wpa_supplicant_output(tmp_path, monkeypatch):
+    fake = tmp_path / "wpa_supplicant"
+    fake.write_text("#!/bin/sh\nsleep 0.3\necho 'wlan0: Trying to associate'\nsleep 0.3\n"
+                    "echo 'wlan0: WPA: 4-Way Handshake failed - pre-shared key may be incorrect'\nsleep 30\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+    monkeypatch.setattr(wifi_helper, "CONF", str(tmp_path / "wifi.conf"))
+    assert wifi_helper.handshake("PHDMXLTS", "hunter22") == "wrong_password"
+    assert not (tmp_path / "wifi.conf").exists()

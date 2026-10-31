@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 import re
+import select
 import signal
 import subprocess
 import sys
@@ -83,21 +84,22 @@ def handshake(ssid, password):
     with os.fdopen(fd, "w") as f:
         f.write(f"network={{\n ssid={ssid.encode().hex()}\n psk={psk}\n key_mgmt=WPA-PSK\n scan_ssid=1\n}}\n")
     p = subprocess.Popen(["wpa_supplicant", "-i", IFACE, "-D", "nl80211", "-c", CONF],
-                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    os.set_blocking(p.stdout.fileno(), False)
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     deadline = time.monotonic() + HANDSHAKE_TIMEOUT_S
     buf = ""
     try:
-        while time.monotonic() < deadline and p.poll() is None:
-            chunk = p.stdout.read() or ""
-            buf += chunk
+        while (left := deadline - time.monotonic()) > 0:
+            if not select.select([p.stdout], [], [], left)[0]:
+                break
+            chunk = os.read(p.stdout.fileno(), 4096)
+            if not chunk:                       # wpa_supplicant exited
+                raise RuntimeError(f"wpa_supplicant stopped: {buf.strip()[-200:]}")
+            buf += chunk.decode(errors="replace")
             *lines, buf = buf.split("\n")
             for line in lines:
                 got = classify(line)
                 if got:
                     return got
-            if not chunk:
-                time.sleep(0.1)
         return "timeout"
     finally:
         p.terminate()
