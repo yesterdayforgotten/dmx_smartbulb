@@ -393,23 +393,30 @@ function app() {
     newFound() { return (this.found || []).filter((f) => !f.known); },
     // Pairing: join bulbs in setup mode to the show network (see engine/wifi_helper.py).
     openPair() {
-      this.pair = { scanning: false, message: '', bulbs: [] };
-      if (this.cfg.network.ssid) this.pairScan();
+      this.pair = { message: '', bulbs: [] };
+      if (this.cfg.network.ssid) this.pairWatch();
     },
     pairBusy() { return !!this.pair && this.pair.bulbs.some((b) => b.state === 'sending' || b.state === 'joining'); },
+    async pairWatch() {
+      // Keep scanning until the popup closes, pausing while a bulb is being paired.
+      const run = this._pairRun = (this._pairRun || 0) + 1;
+      while (this.pair && this._pairRun === run) {
+        if (!this.pairBusy()) await this.pairScan();
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+    },
     async pairScan() {
-      this.pair.scanning = true;
       let r;
       try { r = await this.api('POST', '/api/pair/scan'); }
       catch (e) { r = { result: 'error', message: e.message, networks: [] }; }
       if (!this.pair) return;
-      this.pair.scanning = false;
-      // Keep rows already paired or named; drop ready ones whose bulb has gone.
-      const keep = this.pair.bulbs.filter((b) => b.state !== 'ready' || r.networks.includes(b.ssid));
+      // One scan can miss a bulb, so a row (and any name typed in it) goes only after 3 misses in a row.
+      for (const b of this.pair.bulbs) b.missed = r.networks.includes(b.ssid) ? 0 : (b.missed || 0) + 1;
+      const keep = this.pair.bulbs.filter((b) => b.state !== 'ready' || b.missed < 3);
       const added = r.networks.filter((s) => !keep.some((b) => b.ssid === s))
-        .map((ssid) => ({ ssid, name: '', state: 'ready', message: '' }));
+        .map((ssid) => ({ ssid, name: '', state: 'ready', message: '', missed: 0 }));
       this.pair.bulbs = [...keep, ...added];
-      this.pair.message = r.result === 'ok' ? 'No bulbs in setup mode found yet.' : r.message;
+      this.pair.message = r.result === 'ok' ? '' : r.message;
     },
     async pairOne(b) {
       b.state = 'sending'; b.message = 'Sending the network settings…';

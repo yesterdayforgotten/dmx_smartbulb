@@ -330,11 +330,12 @@ account. Save the show network first (Setup tab), then:
 
 1. Put the bulb in setup mode: with it on, flip its power off and on 5 times, about one
    second per flip. If that doesn't work, 10 times is a full factory reset.
-2. Press **Scan again** until it's listed as `TP-LINK_Smart Bulb_XXXX`, optionally name it,
-   and press **Pair** (or **Pair all**).
+2. The popup keeps scanning while it's open. When the bulb is listed as
+   `TP-LINK_Smart Bulb_XXXX`, optionally name it and press **Pair** (or **Pair all**).
 
 The Pi switches its radio on, joins the bulb's open setup network, reads its model and MAC,
-sends it the show network's name and password, and switches the radio off. It then looks
+sends it the show network's name and password, and switches the radio off. (While the
+popup is open the radio is on for much of the time, so close it when you're done.) It then looks
 for the bulb on the show network by MAC (up to 45 s) and adds it on the next free channel;
 a bulb it already knows keeps its name and channel. The Pi's Ethernet connection isn't
 touched. The password travels over the open setup network with only the protocol's weak

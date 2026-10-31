@@ -9,7 +9,7 @@
 <script src="app.js"></script>
 <script defer src="vendor/alpine.min.js"></script>
 </head>
-<body x-data="app()" x-init="init()" @keydown.escape.window="closeConfirm(false); closeSheet(); groupPopup = null; menuFor = null; dmxPopup = false; assign = null; bulkGroups = false">
+<body x-data="app()" x-init="init()" @keydown.escape.window="closeConfirm(false); closeSheet(); groupPopup = null; menuFor = null; dmxPopup = false; assign = null; bulkGroups = false; if (!pairBusy()) pair = null">
 
 <!-- ================= first run / login ================= -->
 <template x-if="loaded && !session.authenticated">
@@ -594,13 +594,13 @@
         <template x-if="cfg.network.ssid">
           <div class="stack">
             <p class="muted small" style="margin:0">Put each bulb in setup mode: with it on, flip its power off and on 5 times, about one second per flip
-              (10 times for a full factory reset if that doesn't work). Leave it on, then scan.
+              (10 times for a full factory reset if that doesn't work). Leave it on and it appears here.
               Bulbs join <strong x-text="cfg.network.ssid"></strong>. The password is sent over the bulb's open setup network, as with the Kasa app.</p>
             <div class="row">
-              <button class="btn small" type="button" @click="pairScan()" :disabled="pair.scanning || pairBusy()" x-text="pair.scanning ? 'Scanning…' : 'Scan again'"></button>
+              <span class="muted small" x-text="pair.message || (pairBusy() ? 'Scanning paused while pairing.' : 'Scanning for bulbs in setup mode…')"></span>
+              <span style="flex:1"></span>
               <button class="btn small primary" type="button" x-show="pair.bulbs.some(b => b.state === 'ready' || b.state === 'failed')" :disabled="pairBusy()" @click="pairAll()">Pair all</button>
             </div>
-            <p class="muted small" style="margin:0" x-show="!pair.scanning && !pair.bulbs.length" x-text="pair.message"></p>
             <template x-for="b in pair.bulbs" :key="b.ssid">
               <div class="row" style="padding:6px 0; border-top:1px solid var(--line)">
                 <span class="mono" x-text="b.ssid"></span>
