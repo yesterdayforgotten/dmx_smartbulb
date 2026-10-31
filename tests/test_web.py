@@ -360,3 +360,15 @@ def test_wait_for_bulb_gives_up(tmp_path):
         async with Harness(tmp_path) as h:
             assert await h.engine.wait_for_bulb("AABBCCDDEEFF", timeout=0.1) is None
     run(go())
+
+
+def test_page_files_are_revalidated(tmp_path):
+    async def go():
+        async with Harness(tmp_path) as h:
+            for path in ("/", "/app.js", "/app.css"):
+                r = await h.client.get(path)
+                assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
+            etag = r.headers["etag"]
+            r = await h.client.get("/app.css", headers={"If-None-Match": etag})
+            assert r.status_code == 304
+    run(go())

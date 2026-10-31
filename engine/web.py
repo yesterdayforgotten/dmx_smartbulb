@@ -61,6 +61,16 @@ def local_ip_for(peer_ip):
         s.close()
 
 
+class RevalidatedStaticFiles(StaticFiles):
+    """Browsers must check the page's files before reusing them. Without this they
+    keep a cached app.js after an update, while the new index.html calls code it lacks."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
     app = FastAPI(title="dmx_smartbulb", docs_url=None, redoc_url=None, openapi_url=None)
     fw_jobs = {}        # mac -> {"state", "ratio", "message", "version"}
@@ -539,5 +549,5 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
     # ---- static UI -----------------------------------------------------------------
 
     if STATIC.is_dir():
-        app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
+        app.mount("/", RevalidatedStaticFiles(directory=STATIC, html=True), name="static")
     return app
