@@ -736,7 +736,8 @@ function app() {
       const ctl = new AbortController();
       const queue = [...macs];
       this.progress = { title, total: macs.length, done: 0, failed: [], skipped: [], active: [], running: true,
-        stop: false, finishesInFlight, retry: null, abort: () => { if (!finishesInFlight) ctl.abort(); } };
+        stop: false, finishesInFlight, canRetry: false };
+      this._bulkAbort = () => { if (!finishesInFlight) ctl.abort(); };
       const run = this.progress;                // Alpine's reactive copy: changes to it update the popup
       const worker = async () => {
         while (queue.length && !run.stop) {
@@ -754,10 +755,13 @@ function app() {
       await Promise.all(Array.from({ length: parallel }, worker));
       run.running = false;
       const again = [...run.failed, ...run.skipped];
-      if (again.length) run.retry = () => this.runBulk(title, again, one, { parallel, finishesInFlight });
+      // Kept off the popup's state on purpose: Alpine calls any function an expression evaluates to,
+      // so a function in x-show would rerun the whole job every time the popup redraws.
+      this._bulkRetry = () => this.runBulk(title, again, one, { parallel, finishesInFlight });
+      run.canRetry = again.length > 0;
       await this.loadState();                   // the Pi read the new values back
     },
-    stopBulk() { this.progress.stop = true; this.progress.abort(); },
+    stopBulk() { this.progress.stop = true; this._bulkAbort(); },
     updatableSelected() { return this.selected.filter((m) => this.fwUpdatable(m)); },
     async updateFirmwareSelected() {
       const macs = this.updatableSelected();

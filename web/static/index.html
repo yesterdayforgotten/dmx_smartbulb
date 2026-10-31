@@ -645,7 +645,7 @@
         <div class="warn-text small" x-show="progress.skipped.length" x-text="`Skipped, offline: ${bulkNames(progress.skipped)}`"></div>
         <div class="row" style="justify-content:flex-end">
           <button class="btn" type="button" x-show="progress.running" :disabled="progress.stop" @click="stopBulk()" x-text="progress.stop ? 'Stopping…' : 'Stop'"></button>
-          <button class="btn" type="button" x-show="!progress.running && progress.retry" @click="progress.retry()">Retry those</button>
+          <button class="btn" type="button" x-show="!progress.running && progress.canRetry" @click="_bulkRetry()">Retry those</button>
           <button class="btn primary" type="button" x-show="!progress.running" @click="progress = null">Close</button>
         </div>
       </div>
