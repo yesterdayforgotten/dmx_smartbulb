@@ -170,6 +170,7 @@ function app() {
           this.fps = Math.max(0, Math.round((d.input.frames - this._frames) * 1000 / (now - this._framesT)));
           this._frames = d.input.frames; this._framesT = now;
         } else if (this._frames == null) { this._frames = d.input.frames; this._framesT = now; }
+        this._trackInputErrors(d.input, now);
         this.live = d;
         this._wsRetry = 1000;
       };
@@ -331,12 +332,26 @@ function app() {
       const r = await this.act(this.api('POST', '/api/dmx', { enabled: on }), on ? 'DMX controls the bulbs again' : 'DMX is now ignored');
       if (r && this.live) this.live.dmx_enabled = r.enabled;
     },
+    _trackInputErrors(i, now) {
+      // The receiver's counters are lifetime totals; a few errors at start-up (while it
+      // locks onto an already-running console) would otherwise latch the warning forever.
+      // Track what rose in the last 30 s so the pill reflects current trouble, not history.
+      const keys = ['malformed', 'oe', 'fe', 'error_bytes', 'restarts'];
+      const prev = this._inErr || (this._inErr = {});
+      this._inRecent = this._inRecent || {};
+      for (const k of keys) {
+        const v = i[k] || 0;
+        if (prev[k] != null && v > prev[k]) { this._inRecent[k] = (this._inRecent[k] || 0) + (v - prev[k]); this._inRecent._t = now; }
+        prev[k] = v;
+      }
+      if (this._inRecent._t && now - this._inRecent._t > 30000) this._inRecent = {};  // window passed: clear
+    },
+    inputErrorsRecent() { return !!(this._inRecent && this._inRecent._t && Date.now() - this._inRecent._t <= 30000); },
     inputProblems() {
-      const i = this.live ? this.live.input : {};
-      const parts = [];
-      if (i.malformed) parts.push(`${i.malformed} bad frames`);
-      if (i.restarts) parts.push(`${i.restarts} restarts`);
-      return parts.join(', ') || 'input errors';
+      const r = this._inRecent || {};
+      const labels = { malformed: 'bad frames', fe: 'framing', oe: 'overruns', error_bytes: 'error bytes', restarts: 'restarts' };
+      const parts = Object.keys(labels).filter((k) => r[k]).map((k) => `${r[k]} ${labels[k]}`);
+      return (parts.length ? parts.join(', ') : 'input errors') + ' (30s)';
     },
     cssFromState(st, solid = false) {
       if (!st) return 'background:#222';

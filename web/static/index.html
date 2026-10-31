@@ -70,7 +70,7 @@
                 :title="live && live.recording.active ? 'Saving to the SD card. Click to stop.' : 'Save logs and status to the SD card until clicked again'">
           <span class="dot"></span><span x-text="recordingLabel()"></span></button>
         <span class="pill bad" x-show="live && live.recording.error" x-text="live ? 'Recording ' + live.recording.error : ''"></span>
-        <span class="pill bad" x-show="live && (live.input.malformed || live.input.oe || live.input.restarts)"><span class="dot"></span>
+        <span class="pill bad" x-show="live && inputErrorsRecent()"><span class="dot"></span>
           <span x-text="inputProblems()"></span></span>
       </div>
       <nav class="tabs" aria-label="Sections">
