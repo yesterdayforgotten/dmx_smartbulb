@@ -17,6 +17,8 @@ function hsvToRgb(h, s, v) {
   return [f(5), f(3), f(1)].map((x) => Math.round(x * 255));
 }
 
+const PAIR_OPEN_MS = 10 * 60 * 1000;   // the pairing popup closes itself after this
+
 function app() {
   return {
     loaded: false,
@@ -393,7 +395,7 @@ function app() {
     newFound() { return (this.found || []).filter((f) => !f.known); },
     // Pairing: join bulbs in setup mode to the show network (see engine/wifi_helper.py).
     openPair() {
-      this.pair = { message: '', bulbs: [] };
+      this.pair = { message: '', bulbs: [], closeAt: Date.now() + PAIR_OPEN_MS };
       if (this.cfg.network.ssid) this.pairWatch();
     },
     pairBusy() { return !!this.pair && this.pair.bulbs.some((b) => b.state === 'sending' || b.state === 'joining'); },
@@ -401,6 +403,11 @@ function app() {
       // Keep scanning until the popup closes, pausing while a bulb is being paired.
       const run = this._pairRun = (this._pairRun || 0) + 1;
       while (this.pair && this._pairRun === run) {
+        if (!this.pairBusy() && Date.now() >= this.pair.closeAt) {
+          this.pair = null;                  // so a forgotten tab doesn't keep the radio going
+          this.say('Pairing closed after 10 minutes');
+          return;
+        }
         if (!this.pairBusy()) await this.pairScan();
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }
@@ -435,6 +442,7 @@ function app() {
         b.state = 'done';
         await this.loadState();
       } catch (e) { b.state = 'failed'; b.message = e.message; }
+      if (this.pair) this.pair.closeAt = Date.now() + PAIR_OPEN_MS;   // leave time to read the result
     },
     async pairAll() {
       for (const b of this.pair.bulbs.filter((x) => x.state === 'ready' || x.state === 'failed')) await this.pairOne(b);

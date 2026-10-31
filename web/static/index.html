@@ -594,7 +594,7 @@
         <template x-if="cfg.network.ssid">
           <div class="stack">
             <p class="muted small" style="margin:0">Put each bulb in setup mode: with it on, flip its power off and on 5 times, about one second per flip
-              (10 times for a full factory reset if that doesn't work). Leave it on and it appears here.
+              (10 times for a full factory reset if that doesn't work). Leave it on and it appears here. This closes by itself after 10 minutes.
               Bulbs join <strong x-text="cfg.network.ssid"></strong>. The password is sent over the bulb's open setup network, as with the Kasa app.</p>
             <div class="row">
               <span class="muted small" x-text="pair.message || (pairBusy() ? 'Scanning paused while pairing.' : 'Scanning for bulbs in setup mode…')"></span>

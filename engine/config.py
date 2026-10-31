@@ -65,6 +65,7 @@ DEFAULTS = {
     "web_port": 80,
 }
 
+NEW_BULB_MODE = "hsic"       # bulbs added from the UI; a saved bulb with no mode is from before HSIC, spaced for 3 channels
 BULB_DEFAULTS = {"name": "", "ip": None, "channel": None, "follow": None,
                  "dmx": True, "groups": [], "pos": None, "mode": "hsi"}
 

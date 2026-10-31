@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from engine import auth, firmware, wifi
-from engine.config import FOOTPRINT, ConfigError, next_free_channel, overlapping_bulbs, patch_conflicts
+from engine.config import FOOTPRINT, NEW_BULB_MODE, ConfigError, next_free_channel, overlapping_bulbs, patch_conflicts
 
 STATIC = Path(__file__).resolve().parent.parent / "web" / "static"
 COOKIE = "dmxs"
@@ -192,7 +192,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         need_auth(request)
         return {"config": public_config(engine.cfg), "warnings": patch_conflicts(engine.cfg),
                 "overlaps": sorted(overlapping_bulbs(engine.cfg)),
-                "next_free_channel": next_free_channel(engine.cfg), "live": live_payload(),
+                "next_free_channel": next_free_channel(engine.cfg, size=FOOTPRINT[NEW_BULB_MODE]), "live": live_payload(),
                 "info": engine.info,
                 "firmware_images": firmware.cached(firmware_dir)}
 
@@ -244,9 +244,9 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
             raise HTTPException(400, "that bulb is already added")
         channel = body.get("channel")
         if channel == "next":
-            channel = next_free_channel(engine.cfg)
+            channel = next_free_channel(engine.cfg, size=FOOTPRINT[NEW_BULB_MODE])
         change(lambda c: c["bulbs"].__setitem__(mac, {"name": body.get("name") or mac, "ip": body.get("ip"),
-                                                      "channel": channel}))
+                                                      "channel": channel, "mode": NEW_BULB_MODE}))
         await engine.read_power_on([mac])      # so the Bulbs tab can show it straight away
         return {"ok": True, "mac": mac}
 

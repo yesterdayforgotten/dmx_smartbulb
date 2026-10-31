@@ -372,3 +372,24 @@ def test_page_files_are_revalidated(tmp_path):
             r = await h.client.get("/app.css", headers={"If-None-Match": etag})
             assert r.status_code == 304
     run(go())
+
+
+def test_added_bulbs_default_to_hsic_with_room_for_4_channels(tmp_path):
+    async def go():
+        async with Harness(tmp_path) as h:
+            await h.login()
+            macs = list(h.engine.cfg["bulbs"])
+            await h.client.delete(f"/api/bulbs/{macs[2]}")
+            await h.client.patch(f"/api/bulbs/{macs[1]}", json={"channel": 12})   # a 3-channel gap at 4-6 and one at 7-11
+            await h.client.patch(f"/api/bulbs/{macs[0]}", json={"channel": 1})
+            r = await h.client.post("/api/bulbs", json={"mac": macs[2], "ip": "10.0.0.9", "name": "new", "channel": "next"})
+            assert r.status_code == 200
+            b = h.engine.cfg["bulbs"][macs[2]]
+            assert b["mode"] == "hsic" and b["channel"] == 4
+            await h.client.patch(f"/api/bulbs/{macs[0]}", json={"channel": 8})     # 1-3 too small now, 4-7 taken
+            await h.client.delete(f"/api/bulbs/{macs[2]}")
+            await h.client.patch(f"/api/bulbs/{macs[0]}", json={"channel": 3})     # 1-2 free, then 6-11 fits
+            r = await h.client.post("/api/bulbs", json={"mac": macs[2], "ip": "10.0.0.9", "name": "new", "channel": "next"})
+            assert h.engine.cfg["bulbs"][macs[2]]["channel"] == 6
+            assert (await h.client.get("/api/state")).json()["next_free_channel"] == 15
+    run(go())

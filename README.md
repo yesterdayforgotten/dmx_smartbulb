@@ -79,7 +79,7 @@ A bulb patched at channel **N** reads:
 | N + 2 | Intensity | 0–2 = off (dead zone); 3–255 through the brightness curve (default square law) |
 | N + 3 | Color temperature (**HSIC only**) | 0 = 2500 K … 255 = 6500 K |
 
-- **HSI** mode uses 3 channels; **HSIC** mode uses 4. At saturation 0, an HSIC bulb
+- **HSI** mode uses 3 channels; **HSIC** mode, the default for added bulbs, uses 4. At saturation 0, an HSIC bulb
   switches to its real white LEDs at the color temperature on N + 3, instead of mixing
   white from color.
 - Bulbs with the same start channel and the same size share one address on purpose
@@ -335,8 +335,10 @@ account. Save the show network first (Setup tab), then:
 
 The Pi switches its radio on, joins the bulb's open setup network, reads its model and MAC,
 sends it the show network's name and password, and switches the radio off. (While the
-popup is open the radio is on for much of the time, so close it when you're done.) It then looks
-for the bulb on the show network by MAC (up to 45 s) and adds it on the next free channel;
+popup is open the radio is on for much of the time, so it closes itself after 10
+minutes, counted from opening or from the last bulb paired.) It then looks
+for the bulb on the show network by MAC (up to 45 s) and adds it in HSIC mode on the next
+free channel;
 a bulb it already knows keeps its name and channel. The Pi's Ethernet connection isn't
 touched. The password travels over the open setup network with only the protocol's weak
 obfuscation, so it could be captured by someone nearby during those few seconds. Tested
