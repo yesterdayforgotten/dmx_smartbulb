@@ -471,3 +471,22 @@ def test_favicon_is_served(tmp_path):
             r = await h.client.get("/favicon.svg")
             assert r.status_code == 200 and r.headers["content-type"].startswith("image/svg")
     run(go())
+
+
+def test_recordings_can_be_deleted_but_not_while_running(tmp_path):
+    async def go():
+        async with Harness(tmp_path) as h:
+            c = h.client
+            await h.login()
+            name = (await c.post("/api/recording/start")).json()["name"]
+            assert (await c.delete(f"/api/recordings/{name}")).status_code == 409
+            await c.post("/api/recording/stop")
+            c2 = httpx.AsyncClient(transport=httpx.ASGITransport(app=h.app), base_url="http://pi")
+            assert (await c2.delete(f"/api/recordings/{name}")).status_code == 401
+            await c2.aclose()
+            assert (await c.delete(f"/api/recordings/{name}")).status_code == 200
+            assert (await c.get("/api/state")).json()["recordings"] == []
+            assert (await c.delete(f"/api/recordings/{name}")).status_code == 404
+            assert (await c.delete("/api/recordings/config.json")).status_code == 404
+            assert (h.tmp_path / "config.json").exists()
+    run(go())

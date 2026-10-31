@@ -434,6 +434,17 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
             raise HTTPException(404, "no such recording")
         return FileResponse(path, media_type="application/x-ndjson", filename=name)
 
+    @app.delete("/api/recordings/{name}")
+    def recording_delete(name: str, request: Request):
+        need_auth(request)
+        path = engine.recorder.path_of(name)
+        if path is None:
+            raise HTTPException(404, "no such recording")
+        if name == engine.recorder.name:
+            raise HTTPException(409, "stop the recording before deleting it")
+        path.unlink()
+        return {"ok": True}
+
     @app.get("/api/backup")
     def backup(request: Request):
         need_auth(request)

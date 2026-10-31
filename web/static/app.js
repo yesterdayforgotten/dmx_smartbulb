@@ -182,6 +182,14 @@ function app() {
       await this.loadState();
     },
 
+    async deleteRecording(r) {
+      const yes = await this.askConfirm({ title: 'Delete this recording?', body: `${r.name} will be permanently removed from the SD card.`,
+        ok: 'Delete', danger: true });
+      if (!yes) return;
+      await this.act(this.api('DELETE', `/api/recordings/${r.name}`), 'Recording deleted');
+      await this.loadState();
+    },
+
     // ---------- bulb data ----------
     bulbList() {
       return Object.entries(this.cfg.bulbs).map(([mac, b]) => ({ mac, ...b }))

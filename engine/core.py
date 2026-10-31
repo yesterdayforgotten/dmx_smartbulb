@@ -134,6 +134,8 @@ class Engine:
         if seq != self.last_seq:
             self.last_seq = seq
             self.last_frame = t
+            if self.recorder.active:
+                self.recorder.on_frame(seq, t, data)
             if self.loss_applied:
                 log.info("DMX is back")
                 self.loss_applied = False

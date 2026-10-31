@@ -530,7 +530,8 @@
           <div class="row"><span class="mono small" x-text="r.name"></span>
             <span class="muted small" x-text="r.active ? 'recording…' : (r.bytes / 1e6).toFixed(1) + ' MB'"></span>
             <span style="flex:1"></span>
-            <a class="btn small" x-show="!r.active" :href="'/api/recordings/' + r.name" :download="r.name">Download</a></div>
+            <a class="btn small" x-show="!r.active" :href="'/api/recordings/' + r.name" :download="r.name">Download</a>
+            <button class="btn small danger" type="button" x-show="!r.active" @click="deleteRecording(r)">Delete…</button></div>
         </template>
       </section>
 
