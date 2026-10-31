@@ -517,3 +517,14 @@ def test_venue_wifi_endpoints_need_login_and_pass_through(tmp_path, monkeypatch)
             assert joined == [("Cafe", "hunter22")]
             assert "hunter22" not in (await c.get("/api/backup")).text                # not saved
     run(go())
+
+
+def test_auto_assign_follows_the_order_it_is_given(tmp_path):
+    async def go():
+        async with Harness(tmp_path) as h:
+            await h.login()
+            macs = list(h.engine.cfg["bulbs"])
+            r = await h.client.post("/api/bulbs/auto-assign", json={"macs": macs[::-1], "start": 100})
+            assert r.status_code == 200
+            assert [h.engine.cfg["bulbs"][m]["channel"] for m in macs[::-1]] == [100, 103, 106]
+    run(go())

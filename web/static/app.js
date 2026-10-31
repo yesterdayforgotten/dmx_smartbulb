@@ -629,6 +629,14 @@ function app() {
       this.menuFor = b.mac;
     },
     openAssign() { this.assign = { start: this.nextFree || 1 }; },
+    assignOrder() {
+      // The selected bulbs as sorted on the Bulbs tab; any hidden by a filter come after the visible ones.
+      const picked = (b) => this.selected.includes(b.mac);
+      const shown = this.filteredBulbs().filter(picked);
+      const hidden = this.bulbList().sort((a, b) => this.compareBulbs(a, b))
+        .filter((b) => picked(b) && !shown.some((x) => x.mac === b.mac));
+      return [...shown, ...hidden];
+    },
     assignPreview() {
       // Mirror the server: skip channels used by bulbs that aren't being reassigned, and by groups.
       const used = new Set();
@@ -640,7 +648,7 @@ function app() {
       }
       for (const [name, g] of Object.entries(this.cfg.groups)) mark(g.channel, this.groupSize(name));
       let ch = Math.max(1, this.assign ? this.assign.start || 1 : 1);
-      return this.bulbList().filter((b) => this.selected.includes(b.mac)).map((b) => {
+      return this.assignOrder().map((b) => {
         const n = this.bulbSize(b), last = 513 - n;
         const busy = (c) => { for (let i = 0; i < n; i++) if (used.has(c + i)) return true; return false; };
         while (ch <= last && busy(ch)) ch++;
@@ -651,7 +659,7 @@ function app() {
     },
     async autoAssign() {
       const start = this.assign ? this.assign.start || 1 : this.nextFree || 1;
-      const order = this.bulbList().filter((b) => this.selected.includes(b.mac)).map((b) => b.mac);
+      const order = this.assignOrder().map((b) => b.mac);
       const r = await this.act(this.api('POST', '/api/bulbs/auto-assign', { macs: order, start }), `Channels assigned from ${start}`);
       if (r) this.assign = null;
       await this.loadState();

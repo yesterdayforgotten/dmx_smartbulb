@@ -308,7 +308,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
 
     @app.post("/api/bulbs/auto-assign")
     def auto_assign(request: Request, body: dict = Body(...)):
-        """Give the listed bulbs consecutive 3-channel addresses from `start`."""
+        """Give the listed bulbs consecutive addresses from `start`, in the order listed."""
         need_auth(request)
         macs, start = body.get("macs") or [], int(body.get("start") or 1)
 

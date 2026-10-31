@@ -672,7 +672,7 @@
         <div class="row"><strong>Assign DMX channels</strong><span style="flex:1"></span>
           <button class="btn small" type="button" @click="assign = null">Cancel</button></div>
         <p class="muted small" style="margin:0">Each bulb takes 3 channels (hue, saturation, brightness), or 4 in HSIC mode (plus color temperature). The selected bulbs get
-          consecutive addresses from the start channel, skipping channels other bulbs and groups already use, and are set to Solo.</p>
+          consecutive addresses from the start channel, in the order sorted on the Bulbs tab, skipping channels other bulbs and groups already use, and are set to Solo.</p>
         <label class="field" style="max-width:200px"><span>Start at channel</span>
           <input id="assignstart" type="number" min="1" max="510" x-model.number="assign.start"></label>
         <div class="assign-preview">
