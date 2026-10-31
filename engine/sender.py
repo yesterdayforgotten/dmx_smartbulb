@@ -42,6 +42,8 @@ from engine import kasa
 from engine.config import FOOTPRINT, bulb_channel
 
 REPLY_TIMEOUT = 0.5      # s: a command not answered within this is a miss
+RECENT_S = 30.0          # metrics (latency, per-bulb loss) report over this rolling window
+SLOWED_LOSS = 0.1        # a bulb is shown 'slowed' at this fraction of commands lost over RECENT_S
 OFFLINE_AFTER = 5.0      # s without any reply: offline (at least 2.5 idle checks, see apply_config)
 BURST_S = 0.05           # the budget may be spent this far ahead (token bucket depth)
 AGE_WEIGHT = 10.0        # priority added per second a change has waited (100 ms ~ a full change)
@@ -158,6 +160,7 @@ class BulbRuntime:
         self.last_poll = -math.inf   # last status query (engine polls quiet bulbs)
         self.target_frame = None     # DMX frame time behind the current target
         self.confirmed = False       # the bulb has echoed the state we last sent
+        self.outcomes = collections.deque()   # (t, hits, misses) per resolved send, for recent loss
 
     @property
     def dirty(self):
@@ -171,6 +174,19 @@ class BulbRuntime:
     def backed_off(self, min_interval):
         return self.interval > min_interval * 1.01
 
+    def record(self, t, hits, misses):
+        self.outcomes.append((t, hits, misses))
+
+    def recent_loss(self, now, window=RECENT_S):
+        """Fraction of commands with no reply over the last `window` s, or None if
+        the bulb hasn't been sent to recently (idle, so no current health signal)."""
+        while self.outcomes and now - self.outcomes[0][0] > window:
+            self.outcomes.popleft()
+        hits = sum(h for _, h, _ in self.outcomes)
+        miss = sum(m for _, _, m in self.outcomes)
+        total = hits + miss
+        return (miss / total) if total else None
+
 
 class Sender:
     def __init__(self, cfg, send):
@@ -180,14 +196,14 @@ class Sender:
         self.tokens = 0.0
         self.last_tick = None
         self.stats = {"sent": 0, "refreshes": 0, "budget_waits": 0}
-        self.latency = collections.deque(maxlen=500)   # DMX frame -> packet sent, s
+        self.latency = collections.deque(maxlen=8000)   # (t, DMX frame -> packet sent s)
         # The same, once per DMX frame rather than per bulb: in sync mode every bulb a
         # frame changed goes out in one round with the same delay.
-        self.change_latency = collections.deque(maxlen=500)
+        self.change_latency = collections.deque(maxlen=4000)
         self._last_change_frame = None
-        self.queued = collections.deque(maxlen=500)    # change -> packet sent, s
-        self.delivery_spread = collections.deque(maxlen=500)  # per DMX frame: first -> last bulb sent, s
-        self.reply_spread = collections.deque(maxlen=500)     # per burst: first -> last reply, s
+        self.queued = collections.deque(maxlen=8000)    # (t, change -> packet sent s)
+        self.delivery_spread = collections.deque(maxlen=2000)  # (t, per-frame first -> last bulb sent s)
+        self.reply_spread = collections.deque(maxlen=2000)     # (t, per-burst first -> last reply s)
         self._frames = collections.deque()   # DMX frames that changed 2+ bulbs, awaiting delivery
         self._bursts = {}                    # burst id -> [sent time, [reply times]]
         self.burst_id = 0
@@ -339,6 +355,7 @@ class Sender:
             sample = t - sent_at
             rt.rtt = sample if rt.rtt is None else rt.rtt * 0.8 + sample * 0.2
             rt.misses += lost
+            rt.record(t, 1, lost)
             if lost >= self.backoff_after:
                 self._back_off(rt)
         rt.miss_streak = 0
@@ -355,6 +372,7 @@ class Sender:
             rt.pending.popleft()
             rt.misses += 1
             rt.miss_streak += 1
+            rt.record(now, 0, 1)
             if rt.miss_streak >= self.backoff_after:
                 self._back_off(rt)
 
@@ -379,13 +397,13 @@ class Sender:
             return False
         if not refresh or rt.target != rt.sent:
             if rt.dmx_time is not None:
-                self.latency.append(now - rt.dmx_time)
+                self.latency.append((now, now - rt.dmx_time))
                 if rt.dmx_time != self._last_change_frame:
                     self._last_change_frame = rt.dmx_time
-                    self.change_latency.append(now - rt.dmx_time)
+                    self.change_latency.append((now, now - rt.dmx_time))
                 rt.dmx_time = None
             if rt.dirty_since is not None:
-                self.queued.append(now - rt.dirty_since)
+                self.queued.append((now, now - rt.dirty_since))
         if rt.target != rt.sent and rt.target_frame is not None:
             for fr in self._frames:
                 if fr["t"] <= rt.target_frame and rt.mac in fr["pending"]:
@@ -409,11 +427,11 @@ class Sender:
         while self._frames and (not self._frames[0]["pending"] or now - self._frames[0]["t"] > 3.0):
             fr = self._frames.popleft()
             if not fr["pending"] and fr["first"] is not None:
-                self.delivery_spread.append(fr["last"] - fr["first"])
+                self.delivery_spread.append((now, fr["last"] - fr["first"]))
         for b in [b for b, (t0, _) in self._bursts.items() if now - t0 > 1.0]:
             _, replies = self._bursts.pop(b)
             if len(replies) >= 2:
-                self.reply_spread.append(max(replies) - min(replies))
+                self.reply_spread.append((now, max(replies) - min(replies)))
 
     def tick(self, now):
         """Send what the budget allows. Returns the number of packets sent."""
@@ -504,7 +522,9 @@ class Sender:
                 "source": rt.source, "state": rt.target, "online": rt.online(now, self.offline_after),
                 "rtt_ms": None if rt.rtt is None else round(rt.rtt * 1000, 1),
                 "reply_rate": round(rt.replies / rt.sends, 3) if rt.sends else None,
-                "interval_ms": round(rt.interval * 1000), "backoff": rt.backed_off(self.min_interval),
+                "interval_ms": round(rt.interval * 1000),
+                "recent_loss": rt.recent_loss(now),
+                "backoff": (rt.recent_loss(now) or 0) >= SLOWED_LOSS,  # shown as "slowed": currently losing replies
                 "sends": rt.sends, "replies": rt.replies, "misses": rt.misses,
             }
         return out
@@ -523,6 +543,11 @@ def histogram(values_s, edges_ms=HIST_EDGES_MS):
             i += 1
         counts[i] += 1
     return counts
+
+
+def recent(samples, now, window=RECENT_S):
+    """Values from a deque of (time, value) within the last `window` seconds."""
+    return [v for t, v in samples if now - t <= window]
 
 
 def percentile(values, p):

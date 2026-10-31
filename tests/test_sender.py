@@ -319,13 +319,13 @@ def test_sync_mode_sends_all_changed_bulbs_together():
     later = [state_of(c)["transition_period"] for _, c in sends[30:60]]
     assert set(later) <= {300, 0}
     assert len(sends) / 6 <= 100 * 1.05                           # stays within the budget
-    assert percentile(s.delivery_spread, 0.95) < 0.02             # all bulbs get each change together
+    assert percentile([v for _, v in s.delivery_spread], 0.95) < 0.02             # all bulbs get each change together
 
 
 def test_priority_mode_spreads_deliveries():
     s, _ = _fade_run("priority")
     from engine.sender import percentile
-    assert percentile(s.delivery_spread, 0.95) > 0.1              # the budget trickles changes out
+    assert percentile([v for _, v in s.delivery_spread], 0.95) > 0.1              # the budget trickles changes out
 
 
 def test_sync_mode_skips_backed_off_bulb():
@@ -418,3 +418,24 @@ def test_hsic_bulb_reads_fourth_channel():
     data[0:4] = bytes((0, 0, 255, 255))
     s.update_dmx(bytes(data), 1.0, 1.0)
     assert s.bulbs[mac].target == ("temp", 6500, 100)
+
+
+def test_recent_loss_and_time_windowed_metrics():
+    from engine.sender import recent, RECENT_S, SLOWED_LOSS
+    s, sent = make(min_interval_ms=50)
+    rt = next(iter(s.bulbs.values()))
+    # No sends yet: no health signal, not slowed.
+    assert rt.recent_loss(100.0) is None
+    # 8 hits, 2 misses within the window -> 20% loss -> slowed.
+    for i in range(8):
+        rt.record(100.0 + i, 1, 0)
+    rt.record(108.0, 0, 1); rt.record(108.5, 0, 1)
+    assert abs(rt.recent_loss(109.0) - 0.2) < 1e-6
+    assert rt.recent_loss(109.0) >= SLOWED_LOSS
+    # Old outcomes age out of the window.
+    assert rt.recent_loss(100.0 + RECENT_S + 10) is None
+    # Latency deque holds (t, value); recent() filters by time.
+    s.latency.clear()
+    s.latency.append((10.0, 0.05)); s.latency.append((100.0, 0.08))
+    assert recent(s.latency, 101.0) == [0.08]            # only the recent sample
+    assert recent(s.latency, 100.0, window=5) == [0.08]  # 10.0 sample is older than 5 s

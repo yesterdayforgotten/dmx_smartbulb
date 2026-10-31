@@ -47,10 +47,10 @@
           <span class="dot"></span><span x-text="dmxPillText()"></span></button>
         <span class="pill" :class="onlineCount() === bulbList().length ? 'ok' : 'warn'"><span class="dot"></span>
           <span x-text="onlineCount() + '/' + bulbList().length + ' online'"></span></span>
-        <span class="pop-anchor" x-show="live && live.sender.latency_p95_ms != null"
+        <span class="pop-anchor" x-show="live"
               @mouseenter="delayPop = true" @mouseleave="delayPop = false" @click.outside="delayPop = false">
           <button type="button" class="pill pill-btn" @click="delayPop = !delayPop" :aria-expanded="delayPop"
-                  x-text="'delay ' + (live ? live.sender.latency_p95_ms : '') + ' ms'"></button>
+                  x-text="(live && live.sender.latency_p95_ms != null) ? ('delay ' + live.sender.latency_p95_ms + ' ms') : 'delay: idle'"></button>
           <div class="hist-pop" x-show="delayPop" x-cloak role="tooltip">
             <strong>DMX change → command sent</strong>
             <p class="muted small">Last <span x-text="delayHist().total"></span> DMX changes, each counted once however many bulbs it changed.
@@ -270,7 +270,7 @@
                             :title="b.groups.join(', ')"></button></td>
                 <td class="status-cell">
                   <span class="status" :class="isOnline(b.mac) ? 'on' : 'off'" x-text="isOnline(b.mac) ? (liveOf(b.mac).backoff ? 'slowed' : 'online') : 'offline'"
-                        :title="liveOf(b.mac).backoff ? 'Missed several replies in a row, so updates to this bulb are spaced out (now every ' + liveOf(b.mac).interval + ' ms) until it answers again' : ''"></span>
+                        :title="liveOf(b.mac).backoff ? ('Currently losing replies (' + Math.round((liveOf(b.mac).recent_loss||0)*100) + '% over 30 s); updates are spaced out (every ' + liveOf(b.mac).interval + ' ms) until it recovers' : ''"></span>
                 </td>
                 <td class="fw-cell"><span class="fw-flag warn-text" x-show="fwUpdatable(b.mac)" :title="fwTitle(b.mac)" aria-label="Firmware update available">⬆</span></td>
                 <td class="rtt-cell muted small mono"><span x-show="liveOf(b.mac).rtt != null" x-text="liveOf(b.mac).rtt + ' ms'"></span></td>

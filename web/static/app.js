@@ -644,8 +644,9 @@ function app() {
       const out = [
         ['RTT', l.rtt != null ? l.rtt + ' ms' : '–'],
         ['Replies', l.sends ? `${pct} of ${l.sends}` : '–'],
-        ['Missed replies', l.misses ?? '–'],
-        ['Updates every', l.interval != null ? l.interval + ' ms' + (l.backoff ? ' (slowed)' : '') : '–'],
+        ['Recent loss (30s)', l.recent_loss == null ? '–' : Math.round(l.recent_loss * 100) + '%' + (l.backoff ? ' (slowed)' : '')],
+        ['Missed replies (total)', l.misses ?? '–'],
+        ['Updates every', l.interval != null ? l.interval + ' ms' : '–'],
         ['WiFi signal', i.rssi != null ? i.rssi + ' dBm' : '–'],
         ['Power', i.power_mw != null ? (i.power_mw / 1000).toFixed(1) + ' W' : '–'],
         ['IP', (this.cfg.bulbs[mac] || {}).ip || '–'],

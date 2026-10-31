@@ -108,6 +108,7 @@ def create_app(engine, firmware_dir=firmware.DEFAULT_CACHE):
         for mac, b in st["bulbs"].items():
             bulbs[mac] = {"state": from_state(b["state"]), "online": b["online"], "source": b["source"],
                           "backoff": b["backoff"], "rtt": b["rtt_ms"], "interval": b["interval_ms"],
+                          "recent_loss": b["recent_loss"],
                           "sends": b["sends"], "replies": b["replies"], "misses": b["misses"]}
         inp, snd = st["input"], st["sender"]
         return {"t": time.time(), "dmx": st["dmx_present"], "loss": st["dmx_lost_applied"],

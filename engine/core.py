@@ -11,7 +11,7 @@ from engine import kasa
 from engine.config import FOOTPRINT, group_size
 from engine.receiver import Receiver
 from engine.recorder import Recorder
-from engine.sender import HIST_EDGES_MS, Sender, histogram, percentile
+from engine.sender import HIST_EDGES_MS, Sender, histogram, percentile, recent
 
 log = logging.getLogger("engine")
 
@@ -502,17 +502,17 @@ class Engine:
             "dmx_lost_applied": self.loss_applied,
             "input": self.receiver.stats(),
             "sender": {**s.stats,
-                       "latency_p50_ms": ms(percentile(s.latency, 0.5)),
-                       "latency_p95_ms": ms(percentile(s.latency, 0.95)),
-                       "latency_max_ms": ms(max(s.latency)) if s.latency else None,
-                       "latency_hist": {"edges_ms": HIST_EDGES_MS, "counts": histogram(s.change_latency)},
-                       "queued_p95_ms": ms(percentile(s.queued, 0.95)),
+                       "latency_p50_ms": ms(percentile(recent(s.latency, now), 0.5)),
+                       "latency_p95_ms": ms(percentile(recent(s.latency, now), 0.95)),
+                       "latency_max_ms": ms(max(recent(s.latency, now), default=None)),
+                       "latency_hist": {"edges_ms": HIST_EDGES_MS, "counts": histogram(recent(s.change_latency, now))},
+                       "queued_p95_ms": ms(percentile(recent(s.queued, now), 0.95)),
                        "mode": s.mode,
                        "frame_period_ms": ms(s.frame_period) if s.mode == "sync" else None,
-                       "delivery_spread_p50_ms": ms(percentile(s.delivery_spread, 0.5)),
-                       "delivery_spread_p95_ms": ms(percentile(s.delivery_spread, 0.95)),
-                       "reply_spread_p50_ms": ms(percentile(s.reply_spread, 0.5)),
-                       "reply_spread_p95_ms": ms(percentile(s.reply_spread, 0.95)),
+                       "delivery_spread_p50_ms": ms(percentile(recent(s.delivery_spread, now), 0.5)),
+                       "delivery_spread_p95_ms": ms(percentile(recent(s.delivery_spread, now), 0.95)),
+                       "reply_spread_p50_ms": ms(percentile(recent(s.reply_spread, now), 0.5)),
+                       "reply_spread_p95_ms": ms(percentile(recent(s.reply_spread, now), 0.95)),
                        "transport_errors": self.transport.send_errors if self.transport else 0},
             "online": sum(1 for b in bulbs.values() if b["online"]),
             "bulbs": bulbs,
